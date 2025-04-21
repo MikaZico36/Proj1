@@ -6,17 +6,19 @@ import numpy as np
 
 # Simulation parameters
 TIME_STEP = 5
-POPULATION_SIZE = 10
+POPULATION_SIZE = 100
 PARENTS_KEEP = 3
 INPUT = 5
 HIDDEN = 4
 OUTPUT = 2
 GENOME_SIZE = (1+INPUT)*HIDDEN  + (HIDDEN+1)*OUTPUT
-GENERATIONS = 300
+GENERATIONS = 10
 MUTATION_RATE = 0.2
 MUTATION_SIZE = 0.05
-EVALUATION_TIME = 300  # Simulated seconds per individual
+EVALUATION_TIME = 3000  # Simulated seconds per individual
 RANGE = 5
+WEIGHTS = 6
+
 
 
 def random_orientation():
@@ -90,7 +92,9 @@ class Evolution:
         
 
     def runStep(self, weights):
-        
+
+
+
         self.collision = bool(
                 self.__n > 10 and
                 (self.__ir_0.getValue()>4300 or 
@@ -105,8 +109,13 @@ class Evolution:
         ground_sensor_left = (self.ground_sensors[0].getValue()/1023 - .6)/.2>.3
         ground_sensor_right = (self.ground_sensors[1].getValue()/1023 - .6)/.2>.3
 
+
+
+
         left_speed =  ground_sensor_left * weights[0] + ground_sensor_right * weights[1] + weights[2]
         right_speed = ground_sensor_left * weights[3] + ground_sensor_right * weights[4] + weights[5]
+        
+   
         
         self.left_motor.setVelocity(max(min(left_speed, 9), -9))
         self.right_motor.setVelocity(max(min(right_speed, 9), -9))
@@ -118,9 +127,89 @@ class Evolution:
    
     def run(self):
         self.evaluation_start_time = self.supervisor.getTime()
-        weights = [1,1,1,1,1,2]
+        weights = [0.9962394580264582, -0.31073551918942766, 0.16609185696341, -0.6785534060759024, 0.9943027615824647, 0.6560064809304231]
         while self.supervisor.getTime() - self.evaluation_start_time < EVALUATION_TIME and not self.collision:
             self.runStep(weights)
+
+#Corre um robô durante o tempo estipulado e a cada movimento calcula o seu fitness. No final, retorna o fitness calculado
+    def runRobot(self, weights):
+
+        fitness = 0
+        self.reset()
+        self.evaluation_start_time = self.supervisor.getTime()
+        while self.supervisor.getTime() - self.evaluation_start_time < EVALUATION_TIME and not self.collision:
+
+
+
+            ground_sensor_left = (self.ground_sensors[0].getValue()/1023 - .6)/.2>.3
+            ground_sensor_right = (self.ground_sensors[1].getValue()/1023 - .6)/.2>.3
+
+
+            fitness = calculate_fitness(ground_sensor_left, ground_sensor_right,fitness)
+
+            #left_speed =  ground_sensor_left * weights[0] + ground_sensor_right * weights[1] + weights[2]
+            #right_speed = ground_sensor_left * weights[3] + ground_sensor_right * weights[4] + weights[5]
+
+            left_speed = (weights[0]*ground_sensor_left)+ (weights[1]*ground_sensor_right)+ weights[2]
+            right_speed = (weights[3]*ground_sensor_left)+ (weights[4]*ground_sensor_right)+ weights[5]
+
+
+
+            self.left_motor.setVelocity(max(min(left_speed, 9), -9))
+            self.right_motor.setVelocity(max(min(right_speed, 9), -9))
+
+            self.supervisor.step(self.timestep)
+        return fitness
+
+
+#Cria um vetor com os pesos da população
+def initialize_population():
+    return [{'weights': np.random.uniform(-1, 1, WEIGHTS), 'fitness': 0} for _ in range(POPULATION_SIZE)]
+
+#Ordena a lista pelo valor do fitness
+def sorted_parents(population):
+    return sorted(population, key=lambda x: x['fitness'], reverse=True)[:PARENTS_KEEP]
+
+#Faz o crossover num ponto aleatório dos indivíduos e ainda aplica mutation aos filhos
+def crossover(population):
+
+    new_population = []
+
+    for i in range(POPULATION_SIZE//2):
+        p1,p2 = random.sample(population, 2)
+        crossover_point = random.randint(1, WEIGHTS - 1)
+
+        child1_weights = np.concatenate((p1['weights'][:crossover_point], p2['weights'][crossover_point:]))
+        child2_weights = np.concatenate((p2['weights'][:crossover_point], p1['weights'][crossover_point:]))
+
+        child1,child2 ={'weights': child1_weights, 'fitness': 0}, {'weights': child2_weights, 'fitness': 0}
+
+        mutated_child1 = mutate(child1)
+        mutated_child2 = mutate(child2)
+
+        new_population.append(mutated_child1)
+        new_population.append(mutated_child2)
+    return new_population
+
+
+#Faz a mutaçao de um ou mais genes no indivíuo
+def mutate(individual):
+    for i in range(WEIGHTS):
+        if random.random() < MUTATION_RATE:
+            individual['weights'][i] += np.random.normal(0, MUTATION_SIZE)
+    return individual
+
+#calcula o valor do fitness- Quanto mais tempo o robô estiver sobre a linha preta mais fitness recebe
+def calculate_fitness(left_sensor,right_sensor, fitness):
+    if not left_sensor and not right_sensor:
+        fitness += 2
+    elif not left_sensor or not right_sensor:
+        fitness +=1
+    return fitness
+
+def main2():
+    controller = Evolution()
+    controller.run()
 
 
 # Main evolutionary loop
@@ -128,8 +217,41 @@ def main():
 
     # Run the evolutionary algorithm
     controller = Evolution()
-    controller.run()
+    population = initialize_population()
+
+    best_population = []    
+
+
+    for generation in range(GENERATIONS):
+        print(f"\nGeneration {generation+1}")
+
+        for individual in population:
+            individual['fitness'] = controller.runRobot(individual['weights'])
+            print(f"\n Fitness: {individual['fitness']}")
+            
+            if individual['fitness']> 2000:
+                best_population.append(individual)
+
+        population_sorted = sorted_parents(population)
+        print(f"Best fitness: {population_sorted[0]['fitness']}")
+
+        new_population = crossover(population)
+
+        population = new_population
+        
+        with open("melhores_individuos.txt", "a") as f:
+            f.write(f"--- Geração {generation+1} ---\n")
+            for i, ind in enumerate(best_population):
+                f.write(f"Indivíduo {i+1}:\n")
+                f.write(f"Fitness: {ind['fitness']}\n")
+                f.write(f"Weights: {ind['weights'].tolist()}\n\n")
+            f.write("\n\n")
+
+    print(sorted_parents(population)[0])
+        
+        
+   
 
 if __name__ == "__main__":
-    main()
+    main2()
 
