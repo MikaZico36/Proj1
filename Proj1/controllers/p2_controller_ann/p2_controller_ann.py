@@ -15,9 +15,10 @@ GENOME_SIZE = (1+INPUT)*HIDDEN  + (HIDDEN+1)*OUTPUT
 GENERATIONS = 10
 MUTATION_RATE = 0.2
 MUTATION_SIZE = 0.05
-EVALUATION_TIME = 3000  # Simulated seconds per individual
+EVALUATION_TIME = 300  # Simulated seconds per individual
 RANGE = 5
 WEIGHTS = 6
+ANN_PARAMS = 22
 
 def random_orientation():
     angle = np.random.uniform(0, 2 * np.pi)
@@ -91,24 +92,15 @@ class Evolution:
 
     def runStep(self, weights):
         self.collision = bool(
-                self.__n > 10 and
-                (self.__ir_0.getValue()>4300 or 
-                self.__ir_1.getValue()>4300 or
-                self.__ir_2.getValue()>4300 or
-                self.__ir_3.getValue()>4300 or
-                self.__ir_4.getValue()>4300 or
-                self.__ir_5.getValue()>4300 or
-                self.__ir_6.getValue()>4300)
-            )
-        
-        ground_sensor_left = (self.ground_sensors[0].getValue()/1023 - .6)/.2>.3
-        ground_sensor_right = (self.ground_sensors[1].getValue()/1023 - .6)/.2>.3
+        self.__n > 10 and
+        any(sensor.getValue() > 4300 for sensor in self.sensors)
+    )
 
-        left_speed =  ground_sensor_left * weights[0] + ground_sensor_right * weights[1] + weights[2]
-        right_speed = ground_sensor_left * weights[3] + ground_sensor_right * weights[4] + weights[5]
-        
-        self.left_motor.setVelocity(max(min(left_speed, 9), -9))
-        self.right_motor.setVelocity(max(min(right_speed, 9), -9))
+        inputs = [sensor.getValue()/1023 for sensor in self.ground_sensors]
+        motor_speeds = ann_forward(weights, inputs)
+
+        self.left_motor.setVelocity(max(min(motor_speeds[0]*9, 9), -9))
+        self.right_motor.setVelocity(max(min(motor_speeds[1]*9, 9), -9))
 
         self.supervisor.step(self.timestep)
 
@@ -150,47 +142,43 @@ class Evolution:
             self.supervisor.step(self.timestep)
         return fitness
 
-        
-       
-            
 
-#Cria um vetor com os pesos da população
-def initialize_population():
-    return [{'weights': np.random.uniform(-1, 1, WEIGHTS), 'fitness': 0} for _ in range(POPULATION_SIZE)]
 
-#Ordena a lista pelo valor do fitness
+def inicialize_population_ann():
+    return [{'weights': np.random.uniform(-1, 1, ANN_PARAMS), 'fitness': 0} for _ in range(POPULATION_SIZE)]
+
+def ann_forward(weights, inputs):
+    w1 = np.array(weights[0:8]).reshape((2, 4))      
+    b1 = np.array(weights[8:12])                   
+    w2 = np.array(weights[12:20]).reshape((4, 2))    
+    b2 = np.array(weights[20:22])                  
+
+    hidden = np.tanh(np.dot(inputs, w1) + b1)
+    output = np.tanh(np.dot(hidden, w2) + b2)
+    print(f"Output: {output}")
+    return output  
+
 def sorted_parents(population):
     return sorted(population, key=lambda x: x['fitness'], reverse=True)[:PARENTS_KEEP]
 
-#Faz o crossover num ponto aleatório dos indivíduos e ainda aplica mutation aos filhos
-def crossover(population):
-
+def crossover_ann(population):
     new_population = []
-
-    for i in range(POPULATION_SIZE//2):
-        p1,p2 = random.sample(population, 2)
-        crossover_point = random.randint(1, WEIGHTS - 1)
-
-        child1_weights = np.concatenate((p1['weights'][:crossover_point], p2['weights'][crossover_point:]))
-        child2_weights = np.concatenate((p2['weights'][:crossover_point], p1['weights'][crossover_point:]))
-
-        child1,child2 ={'weights': child1_weights, 'fitness': 0}, {'weights': child2_weights, 'fitness': 0}
-
-        mutated_child1 = mutate(child1)
-        mutated_child2 = mutate(child2)
-
-        new_population.append(mutated_child1)
-        new_population.append(mutated_child2)
+    for _ in range(POPULATION_SIZE//2):
+        p1, p2 = random.sample(population, 2)
+        point = random.randint(1, ANN_PARAMS - 1)
+        c1_weights = np.concatenate((p1['weights'][:point], p2['weights'][point:]))
+        c2_weights = np.concatenate((p2['weights'][:point], p1['weights'][point:]))
+        c1 = mutate_ann({'weights': c1_weights, 'fitness': 0})
+        c2 = mutate_ann({'weights': c2_weights, 'fitness': 0})
+        new_population.extend([c1, c2])
     return new_population
 
-
-#Faz a mutaçao de um ou mais genes no indivíuo
-def mutate(individual):
-    for i in range(WEIGHTS):
+def mutate_ann(individual):
+    for i in range(ANN_PARAMS):
         if random.random() < MUTATION_RATE:
             individual['weights'][i] += np.random.normal(0, MUTATION_SIZE)
-    return individual
-
+    return individual  
+       
 #calcula o valor do fitness- Quanto mais tempo o robô estiver sobre a linha preta mais fitness recebe
 def calculate_fitness(left_sensor,right_sensor, fitness):
     if not left_sensor and not right_sensor:
@@ -206,13 +194,10 @@ def main2():
 
 # Main evolutionary loop
 def main():
-
-    # Run the evolutionary algorithm
     controller = Evolution()
-    population = initialize_population()
-
-    best_population = []    
-
+    population = inicialize_population_ann()
+    
+    best_population = []
 
     for generation in range(GENERATIONS):
         print(f"\nGeneration {generation+1}")
@@ -223,25 +208,13 @@ def main():
             
             if individual['fitness']> 2000:
                 best_population.append(individual)
-
         population_sorted = sorted_parents(population)
         print(f"Best fitness: {population_sorted[0]['fitness']}")
-
-        new_population = crossover(population)
-
+        new_population = crossover_ann(population)
         population = new_population
         
-        with open("melhores_individuos.txt", "a") as f:
-            f.write(f"--- Geração {generation+1} ---\n")
-            for i, ind in enumerate(best_population):
-                f.write(f"Indivíduo {i+1}:\n")
-                f.write(f"Fitness: {ind['fitness']}\n")
-                f.write(f"Weights: {ind['weights'].tolist()}\n\n")
-            f.write("\n\n")
-
-    print(sorted_parents(population)[0])
 
 
 if __name__ == "__main__":
-    main2()
+    main()
 
