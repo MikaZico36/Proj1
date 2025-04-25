@@ -12,10 +12,10 @@ INPUT = 5
 HIDDEN = 4
 OUTPUT = 2
 GENOME_SIZE = (1+INPUT)*HIDDEN  + (HIDDEN+1)*OUTPUT
-GENERATIONS = 10
+GENERATIONS = 20
 MUTATION_RATE = 0.2
 MUTATION_SIZE = 0.05
-EVALUATION_TIME = 3000  # Simulated seconds per individual
+EVALUATION_TIME = 300  # Simulated seconds per individual
 RANGE = 5
 WEIGHTS = 6
 
@@ -37,6 +37,8 @@ class Evolution:
 
         # Supervisor to reset robot position
         self.supervisor = Supervisor()
+        self.supervisor.simulationSetMode(self.supervisor.SIMULATION_MODE_FAST)
+
         self.robot = self.supervisor.getSelf()
 
         self.robot_node = self.supervisor.getFromDef("ROBOT") 
@@ -84,7 +86,8 @@ class Evolution:
         random_rotation = [0, 0, 1, np.random.uniform(0, 2 * np.pi)]
         self.supervisor.getFromDef('ROBOT').getField('rotation').setSFRotation(random_rotation)
         self.supervisor.getFromDef('ROBOT').getField('translation').setSFVec3f([0, 0, 0])
-        
+
+
         self.left_motor.setVelocity(0)
         self.right_motor.setVelocity(0)
         
@@ -104,6 +107,8 @@ class Evolution:
         ground_sensor_left = (self.ground_sensors[0].getValue()/1023 - .6)/.2>.3
         ground_sensor_right = (self.ground_sensors[1].getValue()/1023 - .6)/.2>.3
 
+        print(f"GROUND_SENSOR_LEFT: {self.ground_sensors[0].getValue()}")
+
         left_speed =  ground_sensor_left * weights[0] + ground_sensor_right * weights[1] + weights[2]
         right_speed = ground_sensor_left * weights[3] + ground_sensor_right * weights[4] + weights[5]
         
@@ -112,6 +117,12 @@ class Evolution:
 
         self.supervisor.step(self.timestep)
 
+
+    def runBest(self, weights):
+        self.reset()
+        self.evaluation_start_time = self.supervisor.getTime()
+        while self.supervisor.getTime() - self.evaluation_start_time < EVALUATION_TIME and not self.collision:
+            self.runStep(weights)
 
 
    
@@ -123,6 +134,7 @@ class Evolution:
 
 #Corre um robô durante o tempo estipulado e a cada movimento calcula o seu fitness. No final, retorna o fitness calculado
     def runRobot(self, weights):
+
         fitness = 0
         self.reset()
         self.evaluation_start_time = self.supervisor.getTime()
@@ -134,7 +146,7 @@ class Evolution:
             ground_sensor_right = (self.ground_sensors[1].getValue()/1023 - .6)/.2>.3
 
 
-            fitness = calculate_fitness(ground_sensor_left, ground_sensor_right,fitness)
+            fitness = calculate_fitness(ground_sensor_left, ground_sensor_right,fitness,self)
 
             #left_speed =  ground_sensor_left * weights[0] + ground_sensor_right * weights[1] + weights[2]
             #right_speed = ground_sensor_left * weights[3] + ground_sensor_right * weights[4] + weights[5]
@@ -158,29 +170,46 @@ class Evolution:
 def initialize_population():
     return [{'weights': np.random.uniform(-1, 1, WEIGHTS), 'fitness': 0} for _ in range(POPULATION_SIZE)]
 
-#Ordena a lista pelo valor do fitness
+
 def sorted_parents(population):
-    return sorted(population, key=lambda x: x['fitness'], reverse=True)[:PARENTS_KEEP]
+    return sorted(population, key=lambda x: x['fitness'], reverse=True)[:25]
+
+#Faz o torneio entre dois indivíduo e retorna aquele com mais fitness
+def tournament(p1,p2):
+    return p1 if p1['fitness'] >= p2['fitness'] else p2
+
+
 
 #Faz o crossover num ponto aleatório dos indivíduos e ainda aplica mutation aos filhos
 def crossover(population):
 
     new_population = []
+    best_population = sorted_parents(population)
 
-    for i in range(POPULATION_SIZE//2):
-        p1,p2 = random.sample(population, 2)
-        crossover_point = random.randint(1, WEIGHTS - 1)
+    for i in range(best_population.__len__()):
+        p1,p2,p3,p4 = random.sample(best_population, 4)
 
-        child1_weights = np.concatenate((p1['weights'][:crossover_point], p2['weights'][crossover_point:]))
-        child2_weights = np.concatenate((p2['weights'][:crossover_point], p1['weights'][crossover_point:]))
+        winner1 = tournament(p1,p2)
+        winner2 = tournament(p3,p4)
 
-        child1,child2 ={'weights': child1_weights, 'fitness': 0}, {'weights': child2_weights, 'fitness': 0}
+        for _ in range(2):
+            crossover_point = random.randint(1, WEIGHTS - 1)
 
-        mutated_child1 = mutate(child1)
-        mutated_child2 = mutate(child2)
+            child1_weights = np.concatenate((winner1['weights'][:crossover_point], winner2['weights'][crossover_point:]))
+            child2_weights = np.concatenate((winner2['weights'][:crossover_point], winner1['weights'][crossover_point:]))
 
-        new_population.append(mutated_child1)
-        new_population.append(mutated_child2)
+            child1 = {'weights': child1_weights, 'fitness': 0}
+            child2 = {'weights': child2_weights, 'fitness': 0}
+
+            mutated_child1 = mutate(child1)
+            mutated_child2 = mutate(child2)
+
+            new_population.append(mutated_child1)
+            new_population.append(mutated_child2)
+
+
+
+
     return new_population
 
 
@@ -192,11 +221,19 @@ def mutate(individual):
     return individual
 
 #calcula o valor do fitness- Quanto mais tempo o robô estiver sobre a linha preta mais fitness recebe
-def calculate_fitness(left_sensor,right_sensor, fitness):
+#Agora também calcula a distância a que está do centro. Para valorizar uma exploração maior.
+def calculate_fitness(left_sensor,right_sensor, fitness,self):
+
+    #position = self.robot_node.getPosition()
+    #distance = np.linalg.norm(position)
+
+    #fitness += distance/1000
+
+
     if not left_sensor and not right_sensor:
-        fitness += 2
+        fitness += 10
     elif not left_sensor or not right_sensor:
-        fitness +=1
+        fitness += 1
     return fitness
 
 def main2():
@@ -211,7 +248,7 @@ def main():
     controller = Evolution()
     population = initialize_population()
 
-    best_population = []    
+    best_population = []
 
 
     for generation in range(GENERATIONS):
@@ -220,28 +257,28 @@ def main():
         for individual in population:
             individual['fitness'] = controller.runRobot(individual['weights'])
             print(f"\n Fitness: {individual['fitness']}")
-            
-            if individual['fitness']> 2000:
-                best_population.append(individual)
 
-        population_sorted = sorted_parents(population)
-        print(f"Best fitness: {population_sorted[0]['fitness']}")
+        sorted = sorted_parents(population)
+        print(sorted)
+        print(f"Best fitness: {sorted[0]['fitness']}")
+
+
 
         new_population = crossover(population)
 
         population = new_population
-        
-        with open("melhores_individuos.txt", "a") as f:
+
+        """with open("melhores_individuos.txt", "a") as f:
             f.write(f"--- Geração {generation+1} ---\n")
             for i, ind in enumerate(best_population):
                 f.write(f"Indivíduo {i+1}:\n")
                 f.write(f"Fitness: {ind['fitness']}\n")
                 f.write(f"Weights: {ind['weights'].tolist()}\n\n")
             f.write("\n\n")
-
+"""
     print(sorted_parents(population)[0])
 
 
 if __name__ == "__main__":
-    main2()
+    main()
 
