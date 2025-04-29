@@ -6,14 +6,14 @@ import numpy as np
 
 # Simulation parameters
 TIME_STEP = 5
-POPULATION_SIZE = 100
+POPULATION_SIZE = 50
 PARENTS_KEEP = 3
 INPUT = 5
 HIDDEN = 4
 OUTPUT = 2
 GENOME_SIZE = (1+INPUT)*HIDDEN  + (HIDDEN+1)*OUTPUT
 GENERATIONS = 20
-MUTATION_RATE = 0.2
+MUTATION_RATE = 0.1 #0.2
 MUTATION_SIZE = 0.05
 EVALUATION_TIME = 300  # Simulated seconds per individual
 RANGE = 5
@@ -77,9 +77,7 @@ class Evolution:
 
         self.__n = 0
         self.prev_position = self.supervisor.getSelf().getPosition()
-        
-        
-   
+
 
     def reset(self, seed=None, options=None):
         
@@ -127,6 +125,7 @@ class Evolution:
 
    
     def run(self):
+        self.reset()
         self.evaluation_start_time = self.supervisor.getTime()
         weights = [0.9962394580264582, -0.31073551918942766, 0.16609185696341, -0.6785534060759024, 0.9943027615824647, 0.6560064809304231]
         while self.supervisor.getTime() - self.evaluation_start_time < EVALUATION_TIME and not self.collision:
@@ -138,15 +137,22 @@ class Evolution:
         fitness = 0
         self.reset()
         self.evaluation_start_time = self.supervisor.getTime()
+
+        previous_position = self.supervisor.getFromDef('ROBOT').getField('translation').getSFVec3f()
         while self.supervisor.getTime() - self.evaluation_start_time < EVALUATION_TIME and not self.collision:
 
-
+            new_position = self.supervisor.getFromDef('ROBOT').getField('translation').getSFVec3f()
 
             ground_sensor_left = (self.ground_sensors[0].getValue()/1023 - .6)/.2>.3
             ground_sensor_right = (self.ground_sensors[1].getValue()/1023 - .6)/.2>.3
 
+            distance_moved = np.linalg.norm(np.array(new_position) - np.array(previous_position))
 
-            fitness = calculate_fitness(ground_sensor_left, ground_sensor_right,fitness,self)
+            if distance_moved < 0.01:
+                fitness = calculate_fitness(ground_sensor_left, ground_sensor_right,fitness,self) - 100
+            else:
+                fitness = calculate_fitness(ground_sensor_left, ground_sensor_right,fitness,self)
+
 
             #left_speed =  ground_sensor_left * weights[0] + ground_sensor_right * weights[1] + weights[2]
             #right_speed = ground_sensor_left * weights[3] + ground_sensor_right * weights[4] + weights[5]
@@ -212,6 +218,24 @@ def crossover(population):
 
     return new_population
 
+def elitismPopulation():
+    best_individual = {
+        'weights': [0.9962394580264582, -0.31073551918942766, 0.16609185696341,-0.6785534060759024, 0.9943027615824647, 0.6560064809304231],
+        'fitness': 0}
+
+    new_population = [best_individual]
+    for _ in range(POPULATION_SIZE - 1):
+        mutation = np.random.normal(0, MUTATION_RATE, size=len(best_individual['weights']))
+        mutated_weights = np.array(best_individual['weights']) + mutation
+
+        offspring = {
+            'weights': mutated_weights.tolist(),
+            'fitness': 0
+        }
+
+        new_population.append(offspring)
+
+    return new_population
 
 #Faz a mutaçao de um ou mais genes no indivíuo
 def mutate(individual):
@@ -237,8 +261,33 @@ def calculate_fitness(left_sensor,right_sensor, fitness,self):
     return fitness
 
 def main2():
+        controller = Evolution()
+        controller.run()
+
+
+def mainElitism():
     controller = Evolution()
-    controller.run()
+    population = elitismPopulation()
+    best_individual =[0.9962394580264582, -0.31073551918942766, 0.16609185696341, -0.6785534060759024, 0.9943027615824647, 0.6560064809304231]
+
+
+    for generation in range(GENERATIONS):
+        print(f"\nGeneration {generation+1}")
+        for individual in population:
+            individual['fitness'] = controller.runRobot(individual['weights'])
+            print(f"\n Fitness: {individual['fitness']}")
+        sorted = sorted_parents(population)
+        print(sorted)
+        print(f"Best fitness: {sorted[0]['fitness']}")
+
+
+
+        new_population = crossover(population)
+        new_population.append(best_individual)
+
+        population = new_population
+
+    print(sorted_parents(population)[0])
 
 
 # Main evolutionary loop
@@ -280,5 +329,5 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    main2()
 
