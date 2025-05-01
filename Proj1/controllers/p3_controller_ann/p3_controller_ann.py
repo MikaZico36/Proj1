@@ -1,7 +1,6 @@
 import numpy as np
 from controller import Supervisor
 import random
-import math
 import numpy as np
 
 # Simulation parameters
@@ -15,10 +14,11 @@ GENOME_SIZE = (1+INPUT)*HIDDEN  + (HIDDEN+1)*OUTPUT
 GENERATIONS = 10
 MUTATION_RATE = 0.2
 MUTATION_SIZE = 0.05
-EVALUATION_TIME = 300  # Simulated seconds per individual
+EVALUATION_TIME = 100  # Simulated seconds per individual
 RANGE = 5
 WEIGHTS = 6
-ANN_PARAMS = 22
+ANN_PARAMS = 54
+
 
 def random_orientation():
     angle = np.random.uniform(0, 2 * np.pi)
@@ -73,42 +73,33 @@ class Evolution:
 
         self.sensors = [self.__ir_0,self.__ir_2,self.__ir_4]
         self.ground_sensors = [self.supervisor.getDevice(f'prox.ground.{i}') for i in range(2)]
+        self.horizontal_sensors = [self.supervisor.getDevice(f'prox.horizontal.{i}') for i in [0,2,4]]
 
         self.__n = 0
         self.prev_position = self.supervisor.getSelf().getPosition()
 
 
 
-
-    def reset(self, seed=None, options=None):
-
-        random_rotation = [0, 0, 1, np.random.uniform(0, 2 * np.pi)]
-        self.supervisor.getFromDef('ROBOT').getField('rotation').setSFRotation(random_rotation)
-        self.supervisor.getFromDef('ROBOT').getField('translation').setSFVec3f([0, 0, 0])
-
-        self.left_motor.setVelocity(0)
-        self.right_motor.setVelocity(0)
-
-
-
-
-    def run(self):
-        self.evaluation_start_time = self.supervisor.getTime()
-        weights = [0.9962394580264582, -0.31073551918942766, 0.16609185696341, -0.6785534060759024, 0.9943027615824647, 0.6560064809304231]
-        while self.supervisor.getTime() - self.evaluation_start_time < EVALUATION_TIME and not self.collision:
-            self.runRobot(weights)
-
-#Corre um robô durante o tempo estipulado e a cada movimento calcula o seu fitness. No final, retorna o fitness calculado
-    def runRobot(self, weights):
+    def run(self, weights):
         fitness = 0
         self.reset()
         self.evaluation_start_time = self.supervisor.getTime()
         while self.supervisor.getTime() - self.evaluation_start_time < EVALUATION_TIME and not self.collision:
             ground_sensor_left = (self.ground_sensors[0].getValue()/1023 - .6)/.2
             ground_sensor_right = (self.ground_sensors[1].getValue()/1023 - .6)/.2
+            horizontal_sensor_central = (self.horizontal_sensors[0].getValue()/1023 - .6)/.2
+            horizontal_sensor_right = (self.horizontal_sensors[1].getValue()/1023 - .6)/.2
+            horizontal_sensor_left = (self.horizontal_sensors[2].getValue()/1023 - .6)/.2
 
-            outputs = ann_forward(weights, [ground_sensor_left, ground_sensor_right])
-            fitness = calculate_fitness(ground_sensor_left, ground_sensor_right,fitness)
+
+            inputs = [ground_sensor_left,
+                      ground_sensor_right,
+                      horizontal_sensor_central,
+                      horizontal_sensor_right,
+                      horizontal_sensor_left]
+
+            outputs = ann_forward(weights, [ground_sensor_left, ground_sensor_right, horizontal_sensor_central, horizontal_sensor_right, horizontal_sensor_left])
+            fitness = calculate_fitness(inputs, fitness, self)
 
             left_speed = outputs[0]*9
             right_speed = outputs[1]*9
@@ -119,47 +110,53 @@ class Evolution:
             self.supervisor.step(self.timestep)
         return fitness
 
+    def is_inside_obstacle(pos, obstacle_pos, obstacle_size, margin=0.05):
+        return (abs(pos[0] - obstacle_pos[0]) < (obstacle_size[0] / 2 + margin)) and \
+            (abs(pos[1] - obstacle_pos[1]) < (obstacle_size[1] / 2 + margin))
+
+
+
+    def reset(self, seed=None, options=None):
+        random_rotation = [0, 0, 1, np.random.uniform(0, 2 * np.pi)]
+        self.supervisor.getFromDef('ROBOT').getField('rotation').setSFRotation(random_rotation)
+        self.supervisor.getFromDef('ROBOT').getField('translation').setSFVec3f([0, 0, 0])
+
+        self.left_motor.setVelocity(0)
+        self.right_motor.setVelocity(0)
 
 
 def inicialize_population_ann():
     return [{'weights': np.random.uniform(-1, 1, ANN_PARAMS), 'fitness': 0} for _ in range(POPULATION_SIZE)]
 
+
 def ann_forward(weights, inputs):
-    w1 = np.array(weights[0:8]).reshape((2, 4))      
-    b1 = np.array(weights[8:12])                   
-    w2 = np.array(weights[12:20]).reshape((4, 2))    
-    b2 = np.array(weights[20:22])                  
-
-    hidden = np.tanh(np.dot(inputs, w1) + b1)
-    output = np.tanh(np.dot(hidden, w2) + b2)
-    print(f"Output: {output}")
-    return output
-
-def ann_forward2(weights, inputs):
     i = 0
-
-    w1 = np.array(weights[i: i + INPUT*HIDDEN]).reshape((INPUT, HIDDEN))
-    i += INPUT*HIDDEN
+    w1 = np.array(weights[i: i + INPUT * HIDDEN]).reshape((INPUT, HIDDEN))
+    i += INPUT * HIDDEN
     b1 = np.array(weights[i: i + HIDDEN])
     i += HIDDEN
 
-    w2 = np.array(weights[i: i + HIDDEN* OUTPUT]).reshape((HIDDEN, OUTPUT))
-    i += HIDDEN*OUTPUT
-    b2 = np.array(weights[i:i + OUTPUT])
+    w2 = np.array(weights[i: i + HIDDEN * HIDDEN]).reshape((HIDDEN, HIDDEN))
+    i += HIDDEN * HIDDEN
+    b2 = np.array(weights[i: i + HIDDEN])
+    i += HIDDEN
 
-    hidden = np.tanh(np.dot(inputs,w1) + b1)
-    output = np.tanh(np.dot(hidden, w2)+ b2)
+    w3 = np.array(weights[i: i + HIDDEN * OUTPUT]).reshape((HIDDEN, OUTPUT))
+    i += HIDDEN * OUTPUT
+    b3 = np.array(weights[i:i + OUTPUT])
+
+    hidden1 = np.tanh(np.dot(inputs, w1) + b1)
+    hidden2 = np.tanh(np.dot(hidden1, w2) + b2)
+    output = np.tanh(np.dot(hidden2, w3) + b3)
 
     return output
 
 
-
-def sorted_parents(population):
-    return sorted(population, key=lambda x: x['fitness'], reverse=True)[:PARENTS_KEEP]
-
 def crossover_ann(population):
     new_population = []
-    for _ in range(POPULATION_SIZE//2):
+    best_fitness = sorted(population, key=lambda x: x['fitness'], reverse=True)[:PARENTS_KEEP]
+    new_population.extend(best_fitness)
+    while len(new_population) < POPULATION_SIZE:
         p1, p2 = random.sample(population, 2)
         point = random.randint(1, ANN_PARAMS - 1)
         c1_weights = np.concatenate((p1['weights'][:point], p2['weights'][point:]))
@@ -167,39 +164,41 @@ def crossover_ann(population):
         c1 = mutate_ann({'weights': c1_weights, 'fitness': 0})
         c2 = mutate_ann({'weights': c2_weights, 'fitness': 0})
         new_population.extend([c1, c2])
-    return new_population
+
+    return new_population[:POPULATION_SIZE]
+
 
 def mutate_ann(individual):
     for i in range(ANN_PARAMS):
         if random.random() < MUTATION_RATE:
             individual['weights'][i] += np.random.normal(0, MUTATION_SIZE)
-    return individual  
-       
-#calcula o valor do fitness- Quanto mais tempo o robô estiver sobre a linha preta mais fitness recebe
-def calculate_fitness(left_sensor,right_sensor, fitness):
-    if not left_sensor and not right_sensor:
-        fitness += 2
-    elif not left_sensor or not right_sensor:
-        fitness +=1
+    return individual
+
+def calculate_fitness(inputs, fitness, self):
+    if inputs[2] > 1.2 or inputs[3] > 1.2 or inputs[4] > 1.2:
+        fitness += -5
+    if inputs[0] < -2 and inputs[1] < -2:
+        fitness += 10
+    elif inputs[0] < -2 or inputs[1] < -2:
+        fitness += 5
+
+
     return fitness
 
-def main2():
-    controller = Evolution()
-    controller.run()
 
+def sorted_parents(population):
+    return sorted(population, key=lambda x: x['fitness'], reverse=True)[:25]
 
-# Main evolutionary loop
 def main():
     controller = Evolution()
     population = inicialize_population_ann()
-    
+
     best_population = []
 
     for generation in range(GENERATIONS):
         print(f"\nGeneration {generation+1}")
-
         for individual in population:
-            individual['fitness'] = controller.runRobot(individual['weights'])
+            individual['fitness'] = controller.run(individual['weights'])
             print(f"\n Fitness: {individual['fitness']}")
 
         population_sorted = sorted_parents(population)
@@ -207,18 +206,17 @@ def main():
         best_population.append(population_sorted[0])
 
         with open("melhores_individuos.txt", "a") as f:
-                f.write(f"--- Geração {generation+1} ---\n")
-                for i, ind in enumerate(best_population):
-                    f.write(f"Indivíduo {i+1}:\n")
-                    f.write(f"Fitness: {ind['fitness']}\n")
-                    f.write(f"Weights: {ind['weights'].tolist()}\n\n")
-                    f.write("\n\n")
+            f.write(f"--- Geração {generation+1} ---\n")
+            for i, ind in enumerate(best_population):
+                f.write(f"Indivíduo {i+1}:\n")
+                f.write(f"Fitness: {ind['fitness']}\n")
+                f.write(f"Weights: {ind['weights'].tolist()}\n\n")
+                f.write("\n\n")
 
         new_population = crossover_ann(population)
         population = new_population
-        
+
 
 
 if __name__ == "__main__":
     main()
-

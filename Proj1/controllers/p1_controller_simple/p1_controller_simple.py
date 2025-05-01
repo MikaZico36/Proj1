@@ -80,15 +80,12 @@ class Evolution:
 
 
     def reset(self, seed=None, options=None):
-        
-        random_rotation = [0, 0, 1, np.random.uniform(0, 2 * np.pi)]
-        self.supervisor.getFromDef('ROBOT').getField('rotation').setSFRotation(random_rotation)
-        self.supervisor.getFromDef('ROBOT').getField('translation').setSFVec3f([0, 0, 0])
-
-
+        pos = random_position(min_radius=0.2, max_radius=0.6, z=0)
+        rot = random_orientation()
+        self.supervisor.getFromDef('ROBOT').getField('translation').setSFVec3f(list(pos))
+        self.supervisor.getFromDef('ROBOT').getField('rotation').setSFRotation(list(rot))
         self.left_motor.setVelocity(0)
         self.right_motor.setVelocity(0)
-        
 
     def runStep(self, weights):
         self.collision = bool(

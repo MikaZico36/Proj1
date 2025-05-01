@@ -5,9 +5,10 @@ EXTERNPROTO "https://raw.githubusercontent.com/cyberbotics/webots/R2023b/project
 EXTERNPROTO "https://raw.githubusercontent.com/cyberbotics/webots/R2023b/projects/robots/mobsya/thymio/protos/Thymio2.proto"
 EXTERNPROTO "https://raw.githubusercontent.com/cyberbotics/webots/R2023b/projects/objects/solids/protos/SolidBox.proto"
 EXTERNPROTO "https://raw.githubusercontent.com/cyberbotics/webots/R2023b/projects/objects/floors/protos/Floor.proto"
+EXTERNPROTO "https://raw.githubusercontent.com/cyberbotics/webots/R2025a/projects/objects/rocks/protos/Rock.proto"
 
 WorldInfo {
-  basicTimeStep 10
+  basicTimeStep 5
   FPS 30
   contactProperties [
     ContactProperties {
@@ -19,8 +20,8 @@ WorldInfo {
   ]
 }
 Viewpoint {
-  orientation -0.5773500409871866 0.5773496000524626 0.5773511665280979 2.0943981673144187
-  position 0 2.220446049250313e-15 10
+  orientation -0.5588550134602687 0.5036860020305066 0.6587727114026867 2.0699887918845348
+  position 0.23642124642606088 -2.380377295599809 10.64133451941825
 }
 Solid {
   translation 1 1 0.0001
@@ -189,6 +190,11 @@ SolidBox {
     metalness 0
   }
 }
+Rock {
+  translation 0.5 0.5 0
+  name "rock(2)"
+  scale 3
+}
 SolidBox {
   translation 0.00999427 1.56 0
   rotation -7.80236e-07 7.06662e-07 -1 -1.5707953071795862
@@ -212,16 +218,8 @@ SolidBox {
   }
 }
 DEF ROBOT Thymio2 {
-  hidden position_0_0 240943.92524124603
-  hidden position_0_1 246506.69793454482
   hidden linearVelocity_0 -0.008090291835847413 -0.0051758999963962445 4.667244368761203e-12
   hidden angularVelocity_0 7.483686032172682e-09 4.491561689579588e-09 0.00659973851256003
-  hidden rotation_1 -0.6546241634762745 -0.6546242245255949 0.37806656723023163 2.4186797755315634
-  hidden linearVelocity_1 -0.007726915312250929 -0.005126718907414718 -4.3220289681802924e-10
-  hidden angularVelocity_1 0.24538852432137018 -0.36988111870768986 0.006599818762999144
-  hidden rotation_2 -0.029769542760298005 -0.029769485455836842 -0.999113382984903 4.7115020310867335
-  hidden linearVelocity_2 -0.008276870750262837 -0.005491573307643187 4.2261842827084104e-10
-  hidden angularVelocity_2 0.2627675572816214 -0.3960770336704647 0.0065998490913697
   translation -0.023015085203964978 -0.015047810751457252 -1.8825766436934843e-05
   rotation 0.004702268386791792 -0.015589451641788134 0.9998674200460413 0.5858615841683182
   controller "p2_controller_ann"
@@ -232,4 +230,28 @@ Floor {
   appearance PBRAppearance {
     roughness 0.5
   }
+}
+Rock {
+  translation 0.8 0 0
+  type "flat"
+}
+Rock {
+  translation -0.9 0.2 0
+  name "rock(1)"
+  scale 3
+}
+Rock {
+  translation -0.5 -0.5 0
+  name "rock(3)"
+  scale 3
+}
+Rock {
+  translation -0.4 0.9 0
+  name "rock(4)"
+  scale 3
+}
+Rock {
+  translation 0.6 -1 0
+  name "rock(5)"
+  scale 3
 }
