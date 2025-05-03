@@ -6,13 +6,13 @@ import numpy as np
 
 # Simulation parameters
 TIME_STEP = 5
-POPULATION_SIZE = 100
+POPULATION_SIZE = 50
 PARENTS_KEEP = 3
 INPUT = 5
 HIDDEN = 4
 OUTPUT = 2
 GENOME_SIZE = (1+INPUT)*HIDDEN  + (HIDDEN+1)*OUTPUT
-GENERATIONS = 10
+GENERATIONS = 20
 MUTATION_RATE = 0.2
 MUTATION_SIZE = 0.05
 EVALUATION_TIME = 300  # Simulated seconds per individual
@@ -76,8 +76,7 @@ class Evolution:
 
         self.__n = 0
         self.prev_position = self.supervisor.getSelf().getPosition()
-
-
+        self.time_on_line = 0
 
 
     def reset(self, seed=None, options=None):
@@ -94,7 +93,7 @@ class Evolution:
 
     def run(self):
         self.evaluation_start_time = self.supervisor.getTime()
-        weights = [0.9962394580264582, -0.31073551918942766, 0.16609185696341, -0.6785534060759024, 0.9943027615824647, 0.6560064809304231]
+        weights = [0.9694779120876398, 0.7172830075580257, -0.7998779263126954, -0.8813090552850724, -0.9837386300764472, -0.6665975913025994, 0.36228118159224687, -0.49695793345716965, -0.6184058141670212, -0.1197813745975691, -0.009095340731351653, -0.15468596994947514, -0.8595766112244476, -0.31856893041638523, 0.2236138384737254, 0.45658005873801266, -0.6202172765210066, -0.9081886050544028, 0.7167652187426319, 0.9978185077153232, -0.6754434040955009, -0.21105991692119597]
         while self.supervisor.getTime() - self.evaluation_start_time < EVALUATION_TIME and not self.collision:
             self.runRobot(weights)
 
@@ -103,6 +102,7 @@ class Evolution:
         fitness = 0
         self.reset()
         self.evaluation_start_time = self.supervisor.getTime()
+        self.time_on_line = 0  # resetar contador no início da execução
         while self.supervisor.getTime() - self.evaluation_start_time < EVALUATION_TIME and not self.collision:
             ground_sensor_left = (self.ground_sensors[0].getValue()/1023 - .6)/.2
             ground_sensor_right = (self.ground_sensors[1].getValue()/1023 - .6)/.2
@@ -132,27 +132,8 @@ def ann_forward(weights, inputs):
 
     hidden = np.tanh(np.dot(inputs, w1) + b1)
     output = np.tanh(np.dot(hidden, w2) + b2)
-    print(f"Output: {output}")
+    #print(f"Output: {output}")
     return output
-
-def ann_forward2(weights, inputs):
-    i = 0
-
-    w1 = np.array(weights[i: i + INPUT*HIDDEN]).reshape((INPUT, HIDDEN))
-    i += INPUT*HIDDEN
-    b1 = np.array(weights[i: i + HIDDEN])
-    i += HIDDEN
-
-    w2 = np.array(weights[i: i + HIDDEN* OUTPUT]).reshape((HIDDEN, OUTPUT))
-    i += HIDDEN*OUTPUT
-    b2 = np.array(weights[i:i + OUTPUT])
-
-    hidden = np.tanh(np.dot(inputs,w1) + b1)
-    output = np.tanh(np.dot(hidden, w2)+ b2)
-
-    return output
-
-
 
 def sorted_parents(population):
     return sorted(population, key=lambda x: x['fitness'], reverse=True)[:PARENTS_KEEP]
@@ -176,49 +157,65 @@ def mutate_ann(individual):
     return individual  
        
 #calcula o valor do fitness- Quanto mais tempo o robô estiver sobre a linha preta mais fitness recebe
-def calculate_fitness(left_sensor,right_sensor, fitness):
-    if not left_sensor and not right_sensor:
-        fitness += 2
-    elif not left_sensor or not right_sensor:
-        fitness +=1
-    return fitness
+def calculate_fitness(left_sensor, right_sensor, fitness):
+    # Normaliza sensores (valores negativos indicam linha preta)
+    linha_pretas = 0
+    if left_sensor < 0 and right_sensor < 0:
+        linha_pretas += 2
+    elif left_sensor < 0 or right_sensor < 0:
+        linha_pretas += 1
+
+    # Combina com tempo sem colisões (quanto mais tempo vivo, melhor)
+    return fitness + linha_pretas 
 
 def main2():
     controller = Evolution()
     controller.run()
 
-
 # Main evolutionary loop
 def main():
     controller = Evolution()
     population = inicialize_population_ann()
-    
     best_population = []
+
+    stagnation_limit = 10
+    stagnation_counter = 0
+    best_fitness = -float('inf')
 
     for generation in range(GENERATIONS):
         print(f"\nGeneration {generation+1}")
 
         for individual in population:
             individual['fitness'] = controller.runRobot(individual['weights'])
-            print(f"\n Fitness: {individual['fitness']}")
+            print(f"Fitness: {individual['fitness']}")
 
         population_sorted = sorted_parents(population)
-        print(f"Best fitness: {population_sorted[0]['fitness']}")
+        current_best = population_sorted[0]['fitness']
+
+        # Estagnação
+        if current_best > best_fitness:
+            best_fitness = current_best
+            stagnation_counter = 0
+        else:
+            stagnation_counter += 1
+
+        print(f"Best fitness: {current_best}")
         best_population.append(population_sorted[0])
 
         with open("melhores_individuos.txt", "a") as f:
-                f.write(f"--- Geração {generation+1} ---\n")
-                for i, ind in enumerate(best_population):
-                    f.write(f"Indivíduo {i+1}:\n")
-                    f.write(f"Fitness: {ind['fitness']}\n")
-                    f.write(f"Weights: {ind['weights'].tolist()}\n\n")
-                    f.write("\n\n")
+            f.write(f"--- Geração {generation+1} ---\n")
+            for i, ind in enumerate(best_population):
+                f.write(f"Indivíduo {i+1}:\n")
+                f.write(f"Fitness: {ind['fitness']}\n")
+                f.write(f"Weights: {ind['weights'].tolist()}\n\n")
 
-        new_population = crossover_ann(population)
-        population = new_population
-        
+        if stagnation_counter >= stagnation_limit:
+            print("Estagnação detectada. Encerrando evolução.")
+            break
+
+        population = crossover_ann(population)
+
 
 
 if __name__ == "__main__":
-    main()
-
+    main2()
