@@ -36,7 +36,7 @@ DEF ROBOT Thymio2 {
   window "thymio2"
   supervisor TRUE
 }
-SolidBox {
+DEF BOX1 SolidBox {
   translation -0.01 -4.69282e-08 0
   rotation 0 0 1 4.692820414042842e-06
   name "box(1)"
@@ -47,7 +47,7 @@ SolidBox {
     metalness 0
   }
 }
-SolidBox {
+DEF BOX2 SolidBox {
   translation -0.28 0.5 0
   rotation 0 0 1 4.692820414042842e-06
   name "box(2)"
@@ -58,7 +58,7 @@ SolidBox {
     metalness 0
   }
 }
-SolidBox {
+DEF BOX3 SolidBox {
   translation 0.24 -0.5 0
   rotation 0 0 1 4.692820414042842e-06
   name "box(3)"
@@ -69,7 +69,7 @@ SolidBox {
     metalness 0
   }
 }
-SolidBox {
+DEF BOX4 SolidBox {
   translation 0.22 0.5 0
   rotation 0 0 1 4.692820414042842e-06
   name "box(4)"
@@ -80,7 +80,7 @@ SolidBox {
     metalness 0
   }
 }
-SolidBox {
+DEF BOX5 SolidBox {
   translation -0.26 -0.5 0
   rotation 0 0 1 4.692820414042842e-06
   name "box(5)"
@@ -88,6 +88,73 @@ SolidBox {
   appearance PBRAppearance {
     baseColor 0.8 0.8 0.8
     roughness 0.5
+    metalness 0
+  }
+}
+
+DEF CUBE1 SolidBox {
+  translation 0.4 -0.4 1.1
+  size 0.2 0.2 0.2
+  name "cube1"
+  appearance PBRAppearance {
+    baseColor 1 1 1
+    roughness 0.4
+    metalness 0
+  }
+}
+
+DEF CUBE2 SolidBox {
+  translation -0.4 -0.4 1.1
+  size 0.2 0.2 0.2
+  name "cube2"
+  appearance PBRAppearance {
+    baseColor 1 1 1
+    roughness 0.4
+    metalness 0
+  }
+}
+DEF CUBE3 SolidBox {
+  translation -0.4 0.4 1.1
+  size 0.2 0.2 0.2
+  name "cube3"
+  appearance PBRAppearance {
+    baseColor 1 1 1
+    roughness 0.4
+    metalness 0
+  }
+}
+
+DEF CUBE4 SolidBox {
+  translation 0.4 0.4 1.1
+  size 0.2 0.2 0.2
+  name "cube4"
+  appearance PBRAppearance {
+    baseColor 1 1 1
+    roughness 0.4
+    metalness 0
+  }
+}
+
+
+
+DEF CUBE5 SolidBox {
+  translation 0.0 -0.6 1.1
+  size 0.2 0.2 0.2
+  name "cube5"
+  appearance PBRAppearance {
+    baseColor 1 1 1
+    roughness 0.4
+    metalness 0
+  }
+}
+
+DEF CUBE6 SolidBox {
+  translation 0.0 0.6 1.1
+  size 0.2 0.2 0.2
+   name "cube6"
+  appearance PBRAppearance {
+    baseColor 1 1 1
+    roughness 0.4
     metalness 0
   }
 }
