@@ -108,7 +108,7 @@ class OpenAIGymEnvironment(Supervisor, gym.Env):
             rot_field = cube_node.getField("rotation")
             if rot_field is not None:
                 angle = np.random.uniform(0, 2 * np.pi)
-                rot_field.setSFRotation([0, 1, 0, angle])
+                rot_field.setSFRotation([0, 0, 1, angle])
 
             # Aleatoriza tamanho (máximo: 0.2 como no .wbt)
             size_field = cube_node.getField("size")
@@ -281,6 +281,8 @@ class OpenAIGymEnvironment(Supervisor, gym.Env):
 
         return self.state.astype(np.float32), reward, terminated, False, {}
 
+ACTION_SCALE = 0.5
+
 
 def train_ppo():
     env = OpenAIGymEnvironment()
@@ -340,7 +342,9 @@ def test_ppo_model():
     steps = 0
 
     while not done:
-        action, _states = model.predict(obs, deterministic=True) # Use deterministic=True for testing
+        action, _ = model.predict(obs, deterministic=True)
+        action = ACTION_SCALE * action
+
         obs, reward, terminated, truncated, info = env.step(action)
         done = terminated or truncated
         episode_reward += reward
@@ -353,35 +357,99 @@ def test_ppo_model():
     print("PPO model test concluded.")
 
 
-def main():
-    # --- Current manual test loop (uncommented) ---
-    # This part is for initial debugging of robot movement without PPO.
-    # If the robot doesn't move here, the issue is not with PPO.
-    """env = OpenAIGymEnvironment()
+def train_recurrent_ppo():
+    env = OpenAIGymEnvironment()
 
-    obs, info = env.reset()  # initial reset
+    if not os.path.exists('./recurrent_ppo_checkpoints'):
+        os.makedirs('./recurrent_ppo_checkpoints')
 
-    # Ensure motors are in velocity mode and start at 0
-    env.left_motor.setPosition(float('inf'))
-    env.right_motor.setPosition(float('inf'))
-    env.left_motor.setVelocity(0)
-    env.right_motor.setVelocity(0)
+    model = RecurrentPPO(
+        "MlpLstmPolicy",
+        env,
+        verbose=1,
+        learning_rate=3e-4,
+        batch_size=32,
+        n_steps=128,  # menor que no PPO comum devido à LSTM
+        gamma=0.99,
+        ent_coef=0.01,
+        clip_range=0.2,
+        gae_lambda=0.95,
+        vf_coef=0.5,
+        max_grad_norm=0.5,
+        tensorboard_log="./recurrent_ppo_tensorboard/"
+    )
 
+    checkpoint_callback = CheckpointCallback(
+        save_freq=10000,
+        save_path='./recurrent_ppo_checkpoints/',
+        name_prefix='recurrent_ppo_thymio'
+    )
+
+    eval_callback = EvalCallback(
+        env,
+        best_model_save_path='./recurrent_ppo_best_model/',
+        log_path='./recurrent_ppo_eval_logs/',
+        eval_freq=10000,
+        deterministic=True,
+        render=False
+    )
+
+    print("Starting Recurrent PPO training...")
+    model.learn(total_timesteps=500000, callback=[checkpoint_callback, eval_callback])
+    print("Recurrent PPO training finished.")
+
+    model.save("recurrent_ppo_thymio_final")
+
+
+def test_recurrent_ppo_model():
+    print("Starting Recurrent PPO model test...")
+    env = OpenAIGymEnvironment()
+    try:
+        model = RecurrentPPO.load("recurrent_ppo_thymio_final")  # Load the saved model
+    except Exception as e:
+        print(f"ERROR: Could not load model 'recurrent_ppo_thymio_final'. Make sure it exists. Error: {e}")
+        return
+
+    obs, info = env.reset()
     done = False
+    episode_reward = 0
     steps = 0
-    print("\n--- Starting manual movement test ---")
-    while not done and steps < 100: # Run for 100 Gym steps
-        action = np.array([5, 5]) # Hardcoded action to move forward
-        obs, reward, terminated, truncated, info = env.step(action)
-        print(f"Manual Test Step: {steps}, Action: [{action[0]:.2f}, {action[1]:.2f}], Reward: {reward:.2f}")
-        done = terminated or truncated
-        steps += 1
-    print("--- Manual movement test finished ---\n")
 
-    # --- Uncomment one of these lines to run training or testing with PPO ---
-    """
+    state = None
+    episode_start = True
+
+    while not done:
+        action, state = model.predict(obs, state=state, episode_start=episode_start, deterministic=True)
+        action = ACTION_SCALE * action
+
+        obs, reward, terminated, truncated, info = env.step(action)
+        done = terminated or truncated
+        episode_reward += reward
+        steps += 1
+        print(f"Test Step: {steps}, Action: [{action[0]:.2f}, {action[1]:.2f}], Reward: {reward:.2f}, Total Episode Reward: {episode_reward:.2f}")
+        episode_start = False
+
+        if steps >= env.spec.max_episode_steps:
+            print(f"Episode reached max steps ({env.spec.max_episode_steps}). Terminating.")
+            done = True
+
+    print(f"Test episode finished. Total Reward: {episode_reward:.2f}, Total Steps: {steps}")
+    print("Recurrent PPO model test concluded.")
+
+
+
+
+#Gráficos
+
+
+
+
+
+def main():
     train_ppo()
     #test_ppo_model()
+    train_recurrent_ppo()
+    #test_recurrent_ppo_model()
 
 if __name__ == '__main__':
     main()
