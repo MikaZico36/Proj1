@@ -751,8 +751,8 @@ def _train_ppo_rewards(
         env.close()
 
 
-def train_ppo_full_reward():
-    _train_ppo_rewards("Full Reward (Baseline)")
+def train_ppo_no_randomize():
+    _train_ppo_rewards("No Randomize", randomize_on_reset=False)
 
 def train_ppo_no_ground_penalty():
     _train_ppo_rewards("No Ground Penalty", enable_ground_reward=False)
@@ -841,8 +841,8 @@ def _train_recurrent_ppo_rewards(
 
 
 
-def train_recurrent_ppo_full_reward():
-    _train_recurrent_ppo_rewards("Full Reward (Baseline)")
+def train_recurrent_ppo_no_randomize():
+    _train_recurrent_ppo_rewards("No Randomize", randomize_on_reset=False)
 
 def train_recurrent_ppo_no_ground_penalty():
     _train_recurrent_ppo_rewards("No Ground Penalty", enable_ground_reward=False)
@@ -861,13 +861,13 @@ def train_recurrent_ppo_no_linear_vel_reward():
 
 
 def main():
-    train_recurrent_ppo_full_reward()
+    train_recurrent_ppo_no_randomize()
     #train_recurrent_ppo_no_ground_penalty()
     #train_recurrent_ppo_no_collision_penalty()
     #train_recurrent_ppo_no_movement_reward()
     #train_recurrent_ppo_no_linear_vel_reward()
 
-    #train_ppo_full_reward()
+    #train_ppo_no_randomize()
     #train_ppo_no_ground_penalty()
     #train_ppo_no_collision_penalty()
     #train_ppo_no_movement_reward()
