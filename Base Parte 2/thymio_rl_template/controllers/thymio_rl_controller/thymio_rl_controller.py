@@ -778,7 +778,7 @@ def _train_recurrent_ppo_rewards(
         randomize_on_reset=True,
 
 ):
-    print(f"\n--- Starting PPO training: {scenario_name} ---")
+    print(f"\n--- Starting Recurrent PPO training: {scenario_name} ---")
 
     env = OpenAIGymEnvironment(
         enable_ground_reward=enable_ground_reward,
@@ -789,8 +789,8 @@ def _train_recurrent_ppo_rewards(
         randomize_on_reset = randomize_on_reset
     )
 
-    log_dir_prefix = f"./ppo_ablation_logs/{scenario_name.replace(' ', '_').lower()}"
-    model_save_dir = f"./ppo_ablation_models/{scenario_name.replace(' ', '_').lower()}"
+    log_dir_prefix = f"./recurrent_ppo_ablation_logs/{scenario_name.replace(' ', '_').lower()}"
+    model_save_dir = f"./recurrent_ppo_ablation_models/{scenario_name.replace(' ', '_').lower()}"
 
     os.makedirs(log_dir_prefix, exist_ok=True)
     os.makedirs(model_save_dir, exist_ok=True)
@@ -859,7 +859,10 @@ def train_recurrent_ppo_no_linear_vel_reward():
 
 
 
-
+#
+#Para ver gráficos façam: ...\Proj1\Base Parte 2\thymio_rl_template\controllers\thymio_rl_controller> tensorboard --logdir .
+# com o vosso caminho
+#
 def main():
     train_recurrent_ppo_no_randomize()
     #train_recurrent_ppo_no_ground_penalty()
