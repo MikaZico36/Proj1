@@ -93,7 +93,7 @@ DEF BOX5 SolidBox {
 }
 
 DEF CUBE1 SolidBox {
-  translation 0.4 -0.4 1.1
+  translation 0.4 -0.4 1
   size 0.2 0.2 0.2
   name "cube1"
   appearance PBRAppearance {
@@ -104,7 +104,7 @@ DEF CUBE1 SolidBox {
 }
 
 DEF CUBE2 SolidBox {
-  translation -0.4 -0.4 1.1
+  translation -0.4 -0.4 1
   size 0.2 0.2 0.2
   name "cube2"
   appearance PBRAppearance {
@@ -114,7 +114,7 @@ DEF CUBE2 SolidBox {
   }
 }
 DEF CUBE3 SolidBox {
-  translation -0.4 0.4 1.1
+  translation -0.4 0.4 1
   size 0.2 0.2 0.2
   name "cube3"
   appearance PBRAppearance {
@@ -125,7 +125,7 @@ DEF CUBE3 SolidBox {
 }
 
 DEF CUBE4 SolidBox {
-  translation 0.4 0.4 1.1
+  translation 0.4 0.4 1
   size 0.2 0.2 0.2
   name "cube4"
   appearance PBRAppearance {
@@ -138,7 +138,7 @@ DEF CUBE4 SolidBox {
 
 
 DEF CUBE5 SolidBox {
-  translation 0.0 -0.6 1.1
+  translation 0.0 -0.6 1
   size 0.2 0.2 0.2
   name "cube5"
   appearance PBRAppearance {
@@ -149,7 +149,7 @@ DEF CUBE5 SolidBox {
 }
 
 DEF CUBE6 SolidBox {
-  translation 0.0 0.6 1.1
+  translation 0.0 0.6 1
   size 0.2 0.2 0.2
    name "cube6"
   appearance PBRAppearance {

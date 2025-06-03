@@ -1,6 +1,8 @@
 import os
 import sys
 
+from torch import nn
+
 try:
     import time
     import gymnasium as gym
@@ -15,11 +17,9 @@ except ImportError:
     sys.exit('Please make sure you have all dependencies installed.')
 
 
-#
 # Structure of a class to create an OpenAI Gym in Webots.
-#
 class OpenAIGymEnvironment(Supervisor, gym.Env):
-    def __init__(self, max_episode_steps=1000): # Set a concrete value for max_episode_steps
+    def __init__(self, max_episode_steps=1000, enable_ground_reward=True, enable_collision_reward=True, enable_movement_reward=True, enable_stagnation_penalty=True, enable_linear_vel_reward=True, randomize_on_reset=True): # Set a concrete value for max_episode_steps
         super().__init__()
         self.spec = gym.envs.registration.EnvSpec(id='WebotsEnv-v0', entry_point='openai_gym:OpenAIGymEnvironment', max_episode_steps=max_episode_steps)
         self.__timestep = int(self.getBasicTimeStep())
@@ -37,6 +37,7 @@ class OpenAIGymEnvironment(Supervisor, gym.Env):
         self.observation_space = gym.spaces.Box(
             low=np.array([0,0,0,0,0,0,0],dtype=np.float32),
             high=np.array([1,1,1,1,1,1,1], dtype=np.float32))
+
 
         self.state = None
 
@@ -85,69 +86,16 @@ class OpenAIGymEnvironment(Supervisor, gym.Env):
             obstacle = self.getFromDef(f"OBSTACLE_{i+1}")
             if obstacle:
                 self.obstacles.append(obstacle)
-
-#Coloca os obstáculos de forma aleatória no cenário.
-    def randomize_cubes(self):
-        cube_names = ["CUBE1", "CUBE2", "CUBE3", "CUBE4", "CUBE5", "CUBE6"]
-
-        for cube_name in cube_names:
-            cube_node = self.getFromDef(cube_name)
-            if cube_node is None:
-                continue
-
-            # Aleatoriza posição (mantém altura Z fixa)
-            pos_field = cube_node.getField("translation")
-            if pos_field is not None:
-                current_pos = pos_field.getSFVec3f()
-                x = current_pos[0] + np.random.uniform(-0.2, 0.2)
-                y = current_pos[1] + np.random.uniform(-0.2, 0.2)
-                z = 1.1  # manter altura
-                pos_field.setSFVec3f([x, y, z])
-
-            # Aleatoriza rotação em torno do eixo Z (Y em Webots)
-            rot_field = cube_node.getField("rotation")
-            if rot_field is not None:
-                angle = np.random.uniform(0, 2 * np.pi)
-                rot_field.setSFRotation([0, 0, 1, angle])
-
-            # Aleatoriza tamanho (máximo: 0.2 como no .wbt)
-            size_field = cube_node.getField("size")
-            if size_field is not None:
-                new_size = [
-                    np.random.uniform(0.1, 0.2),  # Largura
-                    np.random.uniform(0.1, 0.2),  # Profundidade
-                    np.random.uniform(0.1, 0.2)   # Altura
-                ]
-                size_field.setSFVec3f(new_size)
-
-    #Função que lê os sensores do Thymio
-    def read_sensors(self):
-        proximity_values = {}
-        for i, sensor in enumerate(self.proximity_sensors):
-            val = sensor.getValue()
-            proximity_values[f'prox.horizontal.{i}'] = val
-
-        ground_values = {}
-        for i, sensor in enumerate(self.ground_sensors):
-            val = sensor.getValue()
-            ground_values[f'prox.ground.{i}'] = val
+        self.episode_number = 0
+        self.enable_ground_reward = enable_ground_reward
+        self.enable_collision_reward = enable_collision_reward
+        self.enable_movement_reward = enable_movement_reward
+        self.enable_stagnation_penalty = enable_stagnation_penalty
+        self.enable_linear_vel_reward = enable_linear_vel_reward
+        self.enable_randomize_on_reset = randomize_on_reset
 
 
-        prox_norm = np.array(list(proximity_values.values())) / 4000.0
-        ground_norm = np.array(list(ground_values.values())) / 1000.0
 
-        obs = np.concatenate((prox_norm, ground_norm))
-
-        return obs
-
-#Recebe a ação a tomar, interpreta-a a executa-a
-    def apply_action(self, action):
-
-        left_speed = float(np.clip(action[0], -9, 9))
-        right_speed = float(np.clip(action[1], -9, 9))
-
-        self.left_motor.setVelocity(left_speed)
-        self.right_motor.setVelocity(right_speed)
 
     #Deteta a colisão do Thymio com os obstáculos
     def collision_detected(self):
@@ -173,9 +121,78 @@ class OpenAIGymEnvironment(Supervisor, gym.Env):
         pos = trans_field.getSFVec3f()
         return np.array(pos[:2])
 
-    #
+    #Coloca os obstáculos de forma aleatória no cenário.
+    def randomize_cubes(self):
+        cube_names = ["CUBE1", "CUBE2", "CUBE3", "CUBE4", "CUBE5", "CUBE6"]
+
+        for cube_name in cube_names:
+            cube_node = self.getFromDef(cube_name)
+            if cube_node is None:
+                continue
+
+            pos_field = cube_node.getField("translation")
+            if pos_field is not None:
+                current_pos = pos_field.getSFVec3f()
+                x = current_pos[0] + np.random.uniform(-0.2, 0.2)
+                y = current_pos[1] + np.random.uniform(-0.2, 0.2)
+                z = 1
+                pos_field.setSFVec3f([x, y, z])
+
+            rot_field = cube_node.getField("rotation")
+            if rot_field is not None:
+                angle = np.random.uniform(0, 2 * np.pi)
+                rot_field.setSFRotation([0, 0, 1, angle])
+
+            size_field = cube_node.getField("size")
+            if size_field is not None:
+                new_size = [
+                    np.random.uniform(0.1, 0.2),
+                    np.random.uniform(0.1, 0.2),
+                    np.random.uniform(0.1, 0.2)
+                ]
+                size_field.setSFVec3f(new_size)
+
+
+
+    #Função que lê os sensores do Thymio
+    def read_sensors(self):
+        proximity_values = {}
+        for i, sensor in enumerate(self.proximity_sensors):
+            val = sensor.getValue()
+            proximity_values[f'prox.horizontal.{i}'] = val
+
+        ground_values = {}
+        for i, sensor in enumerate(self.ground_sensors):
+            val = sensor.getValue()
+            ground_values[f'prox.ground.{i}'] = val
+
+
+        prox_norm = np.array(list(proximity_values.values())) / 4000.0
+        ground_norm = np.array(list(ground_values.values())) / 1000.0
+
+        obs = np.concatenate((prox_norm, ground_norm))
+
+        return obs
+
+    #Recebe a ação a tomar, interpreta-a a executa-a
+    def apply_action(self, action):
+
+        left_speed = float(np.clip(action[0], -9, 9))
+        right_speed = float(np.clip(action[1], -9, 9))
+
+        self.left_motor.setVelocity(left_speed)
+        self.right_motor.setVelocity(right_speed)
+
+
+
+    #Retorna a posição do Thymio
+    def get_robot_position(self):
+        trans_field = self.thymio_node.getField("translation")
+        pos = trans_field.getSFVec3f()
+        return np.array(pos[:2])
+
+
     # Recria o cenário de treino do Thymio
-    #
     def reset(self, seed=None, options=None):
         super().reset(seed=seed)
         self.simulationReset()
@@ -186,12 +203,13 @@ class OpenAIGymEnvironment(Supervisor, gym.Env):
         self.prev_pos = None
         self.visited_positions = []
 
-        self.randomize_cubes()
-
         self.left_motor.setPosition(float('inf'))
         self.right_motor.setPosition(float('inf'))
         self.left_motor.setVelocity(0)
         self.right_motor.setVelocity(0)
+
+        if self.enable_randomize_on_reset:
+            self.randomize_cubes()
 
         rotation_field = self.thymio_node.getField("rotation")
         if rotation_field is not None:
@@ -205,7 +223,7 @@ class OpenAIGymEnvironment(Supervisor, gym.Env):
         return np.array(init_state).astype(np.float32), {}
 
 
-#Função de recompensa do Thymio
+    #Função de recompensa do Thymio
     def compute_reward(self, action):
         reward = 0
         terminated = False
@@ -213,59 +231,66 @@ class OpenAIGymEnvironment(Supervisor, gym.Env):
         proximity_sensors = self.get_proximity_sensors()
         ground_sensors = self.get_ground_sensors()
 
-        if min(ground_sensors) < 0.05:
-            reward -= 20
-            terminated = True
+        if self.enable_ground_reward:
+            if min(ground_sensors) < 0.05:
+                reward -= 3
+                terminated = True
+            else:
+                reward +=0.1
 
-        if max(proximity_sensors) > 0.9:
-            reward -= 5
+        if self.enable_collision_reward:
+            if max(proximity_sensors) > 0.95:
+                reward -= 3
+                terminated = True
+            else:
+                reward += 0.1
 
-        if self.collision_detected():
-            reward -= 5
-            terminated = True
+
 
         current_pos = self.get_robot_position()
+        if self.enable_movement_reward:
+            if self.prev_pos is not None:
+                delta_pos = np.linalg.norm(current_pos - self.prev_pos)
+                reward += 0.5 * delta_pos
 
-        if self.prev_pos is not None:
-            delta_pos = np.linalg.norm(current_pos - self.prev_pos)
-            reward += 0.1 * delta_pos
+            self.prev_pos = current_pos
 
-        self.prev_pos = current_pos
+            if not hasattr(self, 'visited_positions'):
+                self.visited_positions = []
 
-        if not hasattr(self, 'visited_positions'):
-            self.visited_positions = []
-
-        for pos in self.visited_positions:
-            if np.linalg.norm(current_pos - pos) < 0.1:
-                reward -= 0.2
-                break
-        self.visited_positions.append(current_pos)
+            for pos in self.visited_positions:
+                if np.linalg.norm(current_pos - pos) < 0.1:
+                    reward -= 0.1
+                    break
+            self.visited_positions.append(current_pos)
 
         vel_linear = (action[0] + action[1]) / 2
-        if vel_linear > 0:
-            reward += 0.5 * vel_linear
-        else:
-            reward -= 0.5 * abs(vel_linear)
+
+        if self.enable_linear_vel_reward:
+            if vel_linear > 0:
+                reward += 1 * vel_linear
+            else:
+                reward -= 0.5 * abs(vel_linear)
 
         STAGNATION_STEPS = 100
         MOVEMENT_THRESHOLD = 0.05
 
-        if len(self.visited_positions) >= STAGNATION_STEPS:
-            recent_positions = self.visited_positions[-STAGNATION_STEPS:]
-            total_movement = sum(
-                np.linalg.norm(recent_positions[i] - recent_positions[i - 1])
-                for i in range(1, len(recent_positions))
-            )
-            if total_movement < MOVEMENT_THRESHOLD:
-                reward -= 10
-                terminated = True
+
+        if self.enable_stagnation_penalty:
+            if len(self.visited_positions) >= STAGNATION_STEPS:
+                recent_positions = self.visited_positions[-STAGNATION_STEPS:]
+                total_movement = sum(
+                    np.linalg.norm(recent_positions[i] - recent_positions[i - 1])
+                    for i in range(1, len(recent_positions))
+                )
+                if total_movement < MOVEMENT_THRESHOLD:
+                    reward -= 0.5
+                    terminated = True
 
         return reward, terminated
 
 
-    #
     # Corre um Timestamp do teste
-    #
     def step(self, action):
 
 
@@ -281,9 +306,9 @@ class OpenAIGymEnvironment(Supervisor, gym.Env):
 
         return self.state.astype(np.float32), reward, terminated, False, {}
 
-ACTION_SCALE = 0.5
 
 
+#PPO treino
 def train_ppo():
     env = OpenAIGymEnvironment()
 
@@ -294,11 +319,11 @@ def train_ppo():
         "MlpPolicy",
         env,
         verbose=1,
-        learning_rate=3e-4,
+        learning_rate=5e-5,
         batch_size=32,
-        n_steps=2048,
+        n_steps=1024,
         gamma=0.99,
-        ent_coef=0.01,
+        ent_coef=0.05,
         clip_range=0.2,
         gae_lambda=0.95,
         vf_coef=0.5,
@@ -322,16 +347,26 @@ def train_ppo():
     )
 
     print("Starting PPO training...")
-    model.learn(total_timesteps=500000, callback=[checkpoint_callback, eval_callback])
+    model.learn(total_timesteps=200000, callback=[checkpoint_callback, eval_callback], tb_log_name="ppo")
     print("PPO training finished.")
 
     model.save("ppo_thymio_final")
 
+    env.close()
+
+
+
+
+
+
+
+
+#Teste do modelo PPO
 def test_ppo_model():
     print("Starting PPO model test...")
     env = OpenAIGymEnvironment()
     try:
-        model = PPO.load("ppo_thymio_final")  # Load the saved model
+        model = PPO.load("ppo_best_model/best_model")
     except Exception as e:
         print(f"ERROR: Could not load model 'ppo_thymio_final'. Make sure it exists. Error: {e}")
         return
@@ -343,7 +378,6 @@ def test_ppo_model():
 
     while not done:
         action, _ = model.predict(obs, deterministic=True)
-        action = ACTION_SCALE * action
 
         obs, reward, terminated, truncated, info = env.step(action)
         done = terminated or truncated
@@ -356,7 +390,7 @@ def test_ppo_model():
     print(f"Test episode finished. Total Reward: {episode_reward:.2f}, Total Steps: {steps}")
     print("PPO model test concluded.")
 
-
+#Treino do Recurrent PPO
 def train_recurrent_ppo():
     env = OpenAIGymEnvironment()
 
@@ -367,11 +401,11 @@ def train_recurrent_ppo():
         "MlpLstmPolicy",
         env,
         verbose=1,
-        learning_rate=3e-4,
-        batch_size=32,
-        n_steps=128,  # menor que no PPO comum devido à LSTM
+        learning_rate=5e-5,
+        batch_size=64,
+        n_steps=256,
         gamma=0.99,
-        ent_coef=0.01,
+        ent_coef=0.05,
         clip_range=0.2,
         gae_lambda=0.95,
         vf_coef=0.5,
@@ -395,17 +429,21 @@ def train_recurrent_ppo():
     )
 
     print("Starting Recurrent PPO training...")
-    model.learn(total_timesteps=500000, callback=[checkpoint_callback, eval_callback])
+    model.learn(total_timesteps=200000, callback=[checkpoint_callback, eval_callback],tb_log_name="recurrent_ppo")
     print("Recurrent PPO training finished.")
 
     model.save("recurrent_ppo_thymio_final")
 
+    env.close()
 
+
+
+#Teste do recurrent PPO
 def test_recurrent_ppo_model():
     print("Starting Recurrent PPO model test...")
     env = OpenAIGymEnvironment()
     try:
-        model = RecurrentPPO.load("recurrent_ppo_thymio_final")  # Load the saved model
+        model = RecurrentPPO.load("recurrent_ppo_thymio_final")
     except Exception as e:
         print(f"ERROR: Could not load model 'recurrent_ppo_thymio_final'. Make sure it exists. Error: {e}")
         return
@@ -420,7 +458,6 @@ def test_recurrent_ppo_model():
 
     while not done:
         action, state = model.predict(obs, state=state, episode_start=episode_start, deterministic=True)
-        action = ACTION_SCALE * action
 
         obs, reward, terminated, truncated, info = env.step(action)
         done = terminated or truncated
@@ -436,20 +473,412 @@ def test_recurrent_ppo_model():
     print(f"Test episode finished. Total Reward: {episode_reward:.2f}, Total Steps: {steps}")
     print("Recurrent PPO model test concluded.")
 
+    env.close()
 
 
 
-#Gráficos
+#TESTES com Relu e Tanh
+
+#PPO treino com Relu e Tanh
+def train_ppo_relu_tanh():
+    env = OpenAIGymEnvironment()
+    if not os.path.exists('./ppo_relu_checkpoints'):
+        os.makedirs('./ppo_relu_checkpoints')
+
+
+    policy_kwargs_relu = dict(activation_fn=nn.ReLU)
+    model_relu = PPO(
+        "MlpPolicy",
+        env,
+        policy_kwargs=policy_kwargs_relu,
+        verbose=1,
+        learning_rate=3e-4,
+        batch_size=32,
+        n_steps=2048,
+        gamma=0.99,
+        ent_coef=0.01,
+        clip_range=0.2,
+        gae_lambda=0.95,
+        vf_coef=0.5,
+        max_grad_norm=0.5,
+        tensorboard_log="./ppo_relu_tensorboard/"
+    )
+
+    checkpoint_callback = CheckpointCallback(
+        save_freq=10000,
+        save_path='./ppo_relu_checkpoints/',
+        name_prefix='ppo_relu_thymio'
+    )
+
+    eval_callback = EvalCallback(
+        env,
+        best_model_save_path='./ppo_relu_best_model/',
+        log_path='./ppo_relu_eval_logs/',
+        eval_freq=10000,
+        deterministic=True,
+        render=False
+    )
+
+    print("Starting PPO Relu training...")
+    model_relu.learn(total_timesteps=200000, callback=[checkpoint_callback, eval_callback], tb_log_name="ppo_relu")
+    print("PPO Relu training finished.")
+
+    model_relu.save("ppo_relu_thymio_final")
+
+    env.close()
+
+
+    env = OpenAIGymEnvironment()
+    if not os.path.exists('./ppo_tanh_checkpoints'):
+        os.makedirs('./ppo_tanh_checkpoints')
+
+    policy_kwargs_tanh = dict(activation_fn=nn.Tanh)
+
+    model_tanh = PPO(
+        "MlpPolicy",
+        env,
+        policy_kwargs=policy_kwargs_tanh,
+        verbose=1,
+        learning_rate=3e-4,
+        batch_size=32,
+        n_steps=2048,
+        gamma=0.99,
+        ent_coef=0.01,
+        clip_range=0.2,
+        gae_lambda=0.95,
+        vf_coef=0.5,
+        max_grad_norm=0.5,
+        tensorboard_log="./ppo_tanh_tensorboard/"
+    )
+
+    checkpoint_callback = CheckpointCallback(
+        save_freq=10000,
+        save_path='./ppo_tanh_checkpoints/',
+        name_prefix='ppo_tanh_thymio'
+    )
+
+    eval_callback = EvalCallback(
+        env,
+        best_model_save_path='./ppo_tanh_best_model/',
+        log_path='./ppo_tanh_eval_logs/',
+        eval_freq=10000,
+        deterministic=True,
+        render=False
+    )
+
+    print("Starting PPO Tanh training...")
+    model_tanh.learn(total_timesteps=200000, callback=[checkpoint_callback, eval_callback],tb_log_name="ppo_tanh")
+    print("PPO Tanh training finished.")
+
+    model_tanh.save("ppo_tanh_thymio_final")
+
+    env.close()
+
+
+
+
+#Treino do Recurrent PPO Tahn e Relu
+def train_recurrent_ppo_tahn_relu():
+    env = OpenAIGymEnvironment()
+
+    if not os.path.exists('./recurrent_ppo_relu_checkpoints'):
+        os.makedirs('./recurrent_ppo_relu_checkpoints')
+
+    policy_kwargs_relu = dict(activation_fn=nn.ReLU)
+
+
+
+    model_relu = RecurrentPPO(
+        "MlpLstmPolicy",
+        env,
+        policy_kwargs=policy_kwargs_relu,
+        verbose=1,
+        learning_rate=5e-5,
+        batch_size=64,
+        n_steps=256,
+        gamma=0.99,
+        ent_coef=0.05,
+        clip_range=0.2,
+        gae_lambda=0.95,
+        vf_coef=0.5,
+        max_grad_norm=0.5,
+        tensorboard_log="./recurrent_ppo_relu_tensorboard/"
+    )
+
+    checkpoint_callback = CheckpointCallback(
+        save_freq=5000,
+        save_path='./recurrent_ppo_relu_checkpoints/',
+        name_prefix='recurrent_ppo_relu_thymio'
+    )
+
+    eval_callback = EvalCallback(
+        env,
+        best_model_save_path='./recurrent_ppo_relu_best_model/',
+        log_path='./recurrent_ppo_relu_eval_logs/',
+        eval_freq=5000,
+        deterministic=True,
+        render=False
+    )
+
+    print("Starting Recurrent PPO Relu training...")
+    model_relu.learn(total_timesteps=50000, callback=[checkpoint_callback, eval_callback],tb_log_name="recurrent_ppo_relu")
+    print("Recurrent PPO Relu training finished.")
+
+    model_relu.save("recurrent_ppo_relu_thymio_final")
+
+    env.close()
+
+    env = OpenAIGymEnvironment()
+
+    if not os.path.exists('./recurrent_ppo_tanh_checkpoints'):
+        os.makedirs('./recurrent_ppo_tanh_checkpoints')
+
+    policy_kwargs_tanh = dict(activation_fn=nn.Tanh)
+
+
+
+    model_tahn = RecurrentPPO(
+        "MlpLstmPolicy",
+        env,
+        policy_kwargs=policy_kwargs_tanh,
+        verbose=1,
+        learning_rate=5e-5,
+        batch_size=64,
+        n_steps=256,
+        gamma=0.99,
+        ent_coef=0.05,
+        clip_range=0.2,
+        gae_lambda=0.95,
+        vf_coef=0.5,
+        max_grad_norm=0.5,
+        tensorboard_log="./recurrent_ppo_tanh_tensorboard/"
+    )
+
+    checkpoint_callback = CheckpointCallback(
+        save_freq=5000,
+        save_path='./recurrent_ppo_tanh_checkpoints/',
+        name_prefix='recurrent_ppo_tanh_thymio'
+    )
+
+    eval_callback = EvalCallback(
+        env,
+        best_model_save_path='./recurrent_ppo_tanh_best_model/',
+        log_path='./recurrent_ppo_tanh_eval_logs/',
+        eval_freq=5000,
+        deterministic=True,
+        render=False
+    )
+
+    print("Starting Recurrent PPO Tanh training...")
+    model_relu.learn(total_timesteps=50000, callback=[checkpoint_callback, eval_callback], tb_log_name="recurrent_ppo_tanh")
+    print("Recurrent PPO Tanh training finished.")
+
+    model_tahn.save("recurrent_ppo_tanh_thymio_final")
+
+    env.close()
+
+
+#TESTES com elementos de recompensas
+
+
+def _train_ppo_rewards(
+        scenario_name,
+        enable_ground_reward=True,
+        enable_collision_reward=True,
+        enable_movement_reward=True,
+        enable_stagnation_penalty=True,
+        enable_linear_vel_reward=True,
+        randomize_on_reset=True,
+):
+    print(f"\n--- Starting PPO training: {scenario_name} ---")
+
+    env = OpenAIGymEnvironment(
+        enable_ground_reward=enable_ground_reward,
+        enable_collision_reward=enable_collision_reward,
+        enable_movement_reward=enable_movement_reward,
+        enable_stagnation_penalty=enable_stagnation_penalty,
+        enable_linear_vel_reward=enable_linear_vel_reward,
+        randomize_on_reset = randomize_on_reset
+    )
+
+    log_dir_prefix = f"./ppo_ablation_logs/{scenario_name.replace(' ', '_').lower()}"
+    model_save_dir = f"./ppo_ablation_models/{scenario_name.replace(' ', '_').lower()}"
+
+    os.makedirs(log_dir_prefix, exist_ok=True)
+    os.makedirs(model_save_dir, exist_ok=True)
+    os.makedirs(f"{model_save_dir}/eval_logs", exist_ok=True)
+    os.makedirs(f"{model_save_dir}/best_model", exist_ok=True)
+
+
+    model = PPO(
+        "MlpPolicy",
+        env,
+        verbose=1,
+        learning_rate=5e-5,
+        batch_size=32,
+        n_steps=1024,
+        gamma=0.99,
+        ent_coef=0.05,
+        clip_range=0.2,
+        gae_lambda=0.95,
+        vf_coef=0.5,
+        max_grad_norm=0.5,
+        tensorboard_log=log_dir_prefix
+    )
+
+    checkpoint_callback = CheckpointCallback(
+        save_freq=5000,
+        save_path=f"{model_save_dir}/checkpoints/",
+        name_prefix=f'ppo_{scenario_name.replace(" ", "_").lower()}'
+    )
+
+    eval_callback = EvalCallback(
+        env,
+        best_model_save_path=f"{model_save_dir}/best_model/",
+        log_path=f"{model_save_dir}/eval_logs/",
+        eval_freq=5000,
+        deterministic=True,
+        render=False
+    )
+
+    try:
+        model.learn(total_timesteps=50000, callback=[checkpoint_callback, eval_callback], tb_log_name=scenario_name)
+    except Exception as e:
+        print(f"Error during {scenario_name} training: {e}")
+    finally:
+        print(f"{scenario_name} training finished.")
+        model.save(f"{model_save_dir}/final_model")
+        env.close()
+
+
+def train_ppo_full_reward():
+    _train_ppo_rewards("Full Reward (Baseline)")
+
+def train_ppo_no_ground_penalty():
+    _train_ppo_rewards("No Ground Penalty", enable_ground_reward=False)
+
+def train_ppo_no_collision_penalty():
+    _train_ppo_rewards("No Collision Penalty", enable_collision_reward=False)
+
+def train_ppo_no_movement_reward():
+    _train_ppo_rewards("No Movement Reward", enable_movement_reward=False)
+
+def train_ppo_no_linear_vel_reward():
+    _train_ppo_rewards("No Linear Velocity Reward", enable_linear_vel_reward=False)
+
+
+#Treino com diferentes reward retirados
+def _train_recurrent_ppo_rewards(
+        scenario_name,
+        enable_ground_reward=True,
+        enable_collision_reward=True,
+        enable_movement_reward=True,
+        enable_stagnation_penalty=True,
+        enable_linear_vel_reward=True,
+        randomize_on_reset=True,
+
+):
+    print(f"\n--- Starting PPO training: {scenario_name} ---")
+
+    env = OpenAIGymEnvironment(
+        enable_ground_reward=enable_ground_reward,
+        enable_collision_reward=enable_collision_reward,
+        enable_movement_reward=enable_movement_reward,
+        enable_stagnation_penalty=enable_stagnation_penalty,
+        enable_linear_vel_reward=enable_linear_vel_reward,
+        randomize_on_reset = randomize_on_reset
+    )
+
+    log_dir_prefix = f"./ppo_ablation_logs/{scenario_name.replace(' ', '_').lower()}"
+    model_save_dir = f"./ppo_ablation_models/{scenario_name.replace(' ', '_').lower()}"
+
+    os.makedirs(log_dir_prefix, exist_ok=True)
+    os.makedirs(model_save_dir, exist_ok=True)
+    os.makedirs(f"{model_save_dir}/eval_logs", exist_ok=True)
+    os.makedirs(f"{model_save_dir}/best_model", exist_ok=True)
+
+    model = RecurrentPPO(
+        "MlpLstmPolicy",
+        env,
+        verbose=1,
+        learning_rate=5e-5,
+        batch_size=64,
+        n_steps=256,
+        gamma=0.99,
+        ent_coef=0.05,
+        clip_range=0.2,
+        gae_lambda=0.95,
+        vf_coef=0.5,
+        max_grad_norm=0.5,
+        tensorboard_log=log_dir_prefix,
+    )
+
+    checkpoint_callback = CheckpointCallback(
+        save_freq=5000,
+        save_path=f"{model_save_dir}/checkpoints/",
+        name_prefix=f'ppo_{scenario_name.replace(" ", "_").lower()}'
+    )
+
+    eval_callback = EvalCallback(
+        env,
+        best_model_save_path=f"{model_save_dir}/best_model/",
+        log_path=f"{model_save_dir}/eval_logs/",
+        eval_freq=5000,
+        deterministic=True,
+        render=False
+    )
+
+    try:
+        model.learn(total_timesteps=50000, callback=[checkpoint_callback, eval_callback], tb_log_name=scenario_name)
+    except Exception as e:
+        print(f"Error during {scenario_name} training: {e}")
+    finally:
+        print(f"{scenario_name} training finished.")
+        model.save(f"{model_save_dir}/final_model")
+        env.close()
+
+
+
+
+
+def train_recurrent_ppo_full_reward():
+    _train_recurrent_ppo_rewards("Full Reward (Baseline)")
+
+def train_recurrent_ppo_no_ground_penalty():
+    _train_recurrent_ppo_rewards("No Ground Penalty", enable_ground_reward=False)
+
+def train_recurrent_ppo_no_collision_penalty():
+    _train_recurrent_ppo_rewards("No Collision Penalty", enable_collision_reward=False)
+
+def train_recurrent_ppo_no_movement_reward():
+    _train_recurrent_ppo_rewards("No Movement Reward", enable_movement_reward=False)
+
+def train_recurrent_ppo_no_linear_vel_reward():
+    _train_recurrent_ppo_rewards("No Linear Velocity Reward", enable_linear_vel_reward=False)
 
 
 
 
 
 def main():
-    train_ppo()
+    train_recurrent_ppo_full_reward()
+    #train_recurrent_ppo_no_ground_penalty()
+    #train_recurrent_ppo_no_collision_penalty()
+    #train_recurrent_ppo_no_movement_reward()
+    #train_recurrent_ppo_no_linear_vel_reward()
+
+    #train_ppo_full_reward()
+    #train_ppo_no_ground_penalty()
+    #train_ppo_no_collision_penalty()
+    #train_ppo_no_movement_reward()
+    #train_ppo_no_linear_vel_reward()
+
+    #train_ppo()
     #test_ppo_model()
-    train_recurrent_ppo()
+    #train_recurrent_ppo()
     #test_recurrent_ppo_model()
+
+
 
 if __name__ == '__main__':
     main()
