@@ -40,12 +40,6 @@ class OpenAIGymEnvironment(Supervisor, gym.Env):
 
         self.state = None
 
-        print("Lista dos dispositivos do robot:")
-        for i in range(self.getNumberOfDevices()):
-            device = self.getDeviceByIndex(i)
-            print(f"Device {i}: {device.getName()}")
-
-
         # Do all other required initializations
         self.thymio_node = self.getFromDef("ROBOT")
         if self.thymio_node is None:
@@ -59,9 +53,9 @@ class OpenAIGymEnvironment(Supervisor, gym.Env):
             print("ERROR: Motors 'motor.left' or 'motor.right' not found. Check device names.")
             sys.exit(1)
 
-        self.left_motor.setPosition(float('inf'))   # Set motors to velocity mode
+        self.left_motor.setPosition(float('inf'))
         self.right_motor.setPosition(float('inf'))
-        self.left_motor.setVelocity(0.0) # Ensure they start at 0 velocity
+        self.left_motor.setVelocity(0.0)
         self.right_motor.setVelocity(0.0)
 
         self.proximity_sensors = []
@@ -87,121 +81,106 @@ class OpenAIGymEnvironment(Supervisor, gym.Env):
         self.visited_positions = []
 
         self.obstacles = []
-        for i in range(5):  # or however many obstacles you have
+        for i in range(5):
             obstacle = self.getFromDef(f"OBSTACLE_{i+1}")
             if obstacle:
                 self.obstacles.append(obstacle)
 
+#Coloca os obstáculos de forma aleatória no cenário.
     def randomize_cubes(self):
-        # List with the DEF names of the cubes
         cube_names = ["CUBE1", "CUBE2", "CUBE3", "CUBE4", "CUBE5", "CUBE6"]
 
         for cube_name in cube_names:
             cube_node = self.getFromDef(cube_name)
             if cube_node is None:
-                print(f"Warning: cube {cube_name} not found")
-                continue # Skip to the next cube if node is not found
-            field = cube_node.getField("translation")
-            if field is None:
-                print(f"Warning: 'translation' field not found for cube {cube_name}")
                 continue
 
-            # Get current position to keep height (z) fixed at 1.1 and vary only x and y in a small range
-            current_pos = field.getSFVec3f()  # [x, y, z]
+            # Aleatoriza posição (mantém altura Z fixa)
+            pos_field = cube_node.getField("translation")
+            if pos_field is not None:
+                current_pos = pos_field.getSFVec3f()
+                x = current_pos[0] + np.random.uniform(-0.2, 0.2)
+                y = current_pos[1] + np.random.uniform(-0.2, 0.2)
+                z = 1.1  # manter altura
+                pos_field.setSFVec3f([x, y, z])
 
-            x = current_pos[0] + np.random.uniform(-0.2, 0.2)  # vary +- 0.2 on x-axis
-            y = current_pos[1] + np.random.uniform(-0.2, 0.2)  # vary +- 0.2 on y-axis
-            z = 1.1  # fix height
+            # Aleatoriza rotação em torno do eixo Z (Y em Webots)
+            rot_field = cube_node.getField("rotation")
+            if rot_field is not None:
+                angle = np.random.uniform(0, 2 * np.pi)
+                rot_field.setSFRotation([0, 1, 0, angle])
 
-            # Update cube position
-            field.setSFVec3f([x, y, z])
+            # Aleatoriza tamanho (máximo: 0.2 como no .wbt)
+            size_field = cube_node.getField("size")
+            if size_field is not None:
+                new_size = [
+                    np.random.uniform(0.1, 0.2),  # Largura
+                    np.random.uniform(0.1, 0.2),  # Profundidade
+                    np.random.uniform(0.1, 0.2)   # Altura
+                ]
+                size_field.setSFVec3f(new_size)
 
-
+    #Função que lê os sensores do Thymio
     def read_sensors(self):
-        # Read values from proximity sensors
         proximity_values = {}
         for i, sensor in enumerate(self.proximity_sensors):
             val = sensor.getValue()
             proximity_values[f'prox.horizontal.{i}'] = val
 
-        # Read values from ground sensors
         ground_values = {}
         for i, sensor in enumerate(self.ground_sensors):
             val = sensor.getValue()
             ground_values[f'prox.ground.{i}'] = val
 
-        # Print sensor values (you can comment this out later if you want)
-        # print("Proximity Sensors:")
-        # for name, val in proximity_values.items():
-        #     print(f"  {name}: {val:.2f}")
 
-        # print("Ground Sensors:")
-        # for name, val in ground_values.items():
-        #     print(f"  {name}: {val:.2f}")
-
-        # Normalize values to be between 0 and 1
-        # Max values for Thymio II sensors: Proximity ~4000, Ground ~1000
         prox_norm = np.array(list(proximity_values.values())) / 4000.0
         ground_norm = np.array(list(ground_values.values())) / 1000.0
 
-        # Concatenate into a single vector
         obs = np.concatenate((prox_norm, ground_norm))
-
-        # print(f"Motor velocities (before reading sensors): Left: {self.left_motor.getVelocity():.2f}, Right: {self.right_motor.getVelocity():.2f}")
 
         return obs
 
-
+#Recebe a ação a tomar, interpreta-a a executa-a
     def apply_action(self, action):
-        # Removed the multiplier. Speeds are now directly from the action, clipped to [-9, 9].
 
-        print(f"ACTION apply_action: {action}")
         left_speed = float(np.clip(action[0], -9, 9))
         right_speed = float(np.clip(action[1], -9, 9))
 
         self.left_motor.setVelocity(left_speed)
         self.right_motor.setVelocity(right_speed)
 
-        # Debugging: Print the speeds that were *set*
-        print(f"Applied speeds - Left: {left_speed:.2f}, Right: {right_speed:.2f}")
-        # Debugging: Print the speeds *read back* from the motors immediately after setting
-        print(f"Motor actual velocities (after set): Left: {self.left_motor.getVelocity():.2f}, Right: {self.right_motor.getVelocity():.2f}")
-
-
+    #Deteta a colisão do Thymio com os obstáculos
     def collision_detected(self):
-        # Define collision if any frontal proximity sensor is very close
-        # Sensors 0, 1, 2, 3, 4 correspond to front-left, front-center-left, front-center, front-center-right, front-right
-        # Check central and slightly off-center front sensors
         proximity_vals = np.array([sensor.getValue() for sensor in self.proximity_sensors])
-        # A value like 3500-4000 usually means very close or touching
-        if np.any(proximity_vals[[1, 2, 3]] > 3500): # Check sensors 1, 2, 3 (front-center-left, front-center, front-center-right)
+        if np.any(proximity_vals[[1, 2, 3]] > 3500):
             return True
         return False
 
-
+    #Retorna os valores dos sensores de proximidade
     def get_proximity_sensors(self):
         proximity_vals = np.array([sensor.getValue() for sensor in self.proximity_sensors])
         return np.clip(proximity_vals / 4000.0, 0, 1)
 
+    #Retorna os valores dos sensores de proximidade
     def get_ground_sensors(self):
         ground_vals = np.array([sensor.getValue() for sensor in self.ground_sensors])
         return np.clip(ground_vals / 1000.0, 0, 1)
 
 
+    #Retorna a posição do Thymio
     def get_robot_position(self):
-        # Get the robot's position in the environment
         trans_field = self.thymio_node.getField("translation")
         pos = trans_field.getSFVec3f()
-        return np.array(pos[:2])  # x and y coordinates
+        return np.array(pos[:2])
 
     #
-    # Reset the environment to an initial internal state, returning an initial observation and info.
+    # Recria o cenário de treino do Thymio
     #
     def reset(self, seed=None, options=None):
         super().reset(seed=seed)
         self.simulationReset()
         self.simulationResetPhysics()
-        super().step(self.__timestep)  # Step once to apply reset and get initial state
+        super().step(self.__timestep)
 
         self.__n = 0
         self.prev_pos = None
@@ -209,26 +188,24 @@ class OpenAIGymEnvironment(Supervisor, gym.Env):
 
         self.randomize_cubes()
 
-        # ✅ GARANTIR MODO DE VELOCIDADE NOS MOTORES
         self.left_motor.setPosition(float('inf'))
         self.right_motor.setPosition(float('inf'))
         self.left_motor.setVelocity(0)
         self.right_motor.setVelocity(0)
 
-    # Allow some time for physics to settle after randomization
-        for i in range(50):
+        rotation_field = self.thymio_node.getField("rotation")
+        if rotation_field is not None:
+            angle = np.random.uniform(0, 2 * np.pi)
+            rotation_field.setSFRotation([0, 0, 1, angle])
+
+        for i in range(20):
             super().step(self.__timestep)
 
         init_state = self.read_sensors()
         return np.array(init_state).astype(np.float32), {}
 
 
-    # Robot reward function
-    # First, check if the robot is near a fall
-    # Second, avoid collisions with objects
-    # Third, reward exploration of new locations
-    # Penalize already visited locations
-    # Prefer positive linear velocities
+#Função de recompensa do Thymio
     def compute_reward(self, action):
         reward = 0
         terminated = False
@@ -236,50 +213,42 @@ class OpenAIGymEnvironment(Supervisor, gym.Env):
         proximity_sensors = self.get_proximity_sensors()
         ground_sensors = self.get_ground_sensors()
 
-        # Penalty for being near an edge/fall (ground sensor values too low)
-        if min(ground_sensors) < 0.2:  # Threshold for detecting edge
+        if min(ground_sensors) < 0.05:
             reward -= 20
-            terminated = True  # Episode terminates if it's about to fall
+            terminated = True
 
-        # Penalty for being too close to an obstacle (high proximity sensor values)
-        if max(proximity_sensors) > 0.8:  # Threshold for being very close
+        if max(proximity_sensors) > 0.9:
             reward -= 5
 
-        # Strong penalty for collision
         if self.collision_detected():
             reward -= 5
-            terminated = True  # Episode terminates on collision
+            terminated = True
 
         current_pos = self.get_robot_position()
 
-        # Reward for movement (change in position)
         if self.prev_pos is not None:
             delta_pos = np.linalg.norm(current_pos - self.prev_pos)
-            reward += 0.1 * delta_pos  # Small reward for moving
+            reward += 0.1 * delta_pos
 
         self.prev_pos = current_pos
 
-        # Initialize visited_positions if it doesn't exist
         if not hasattr(self, 'visited_positions'):
             self.visited_positions = []
 
-        # Penalty for staying in already visited locations
         for pos in self.visited_positions:
             if np.linalg.norm(current_pos - pos) < 0.1:
                 reward -= 0.2
                 break
         self.visited_positions.append(current_pos)
 
-        # Reward/penalty based on linear velocity
         vel_linear = (action[0] + action[1]) / 2
         if vel_linear > 0:
             reward += 0.5 * vel_linear
         else:
             reward -= 0.5 * abs(vel_linear)
 
-        # ----------- Stagnation Check ------------
-        STAGNATION_STEPS = 300  # Number of steps to consider
-        MOVEMENT_THRESHOLD = 0.05  # Min total movement
+        STAGNATION_STEPS = 100
+        MOVEMENT_THRESHOLD = 0.05
 
         if len(self.visited_positions) >= STAGNATION_STEPS:
             recent_positions = self.visited_positions[-STAGNATION_STEPS:]
@@ -288,37 +257,26 @@ class OpenAIGymEnvironment(Supervisor, gym.Env):
                 for i in range(1, len(recent_positions))
             )
             if total_movement < MOVEMENT_THRESHOLD:
-                reward -= 10  # Optional penalty
+                reward -= 10
                 terminated = True
-                print("Stagnation detected: episode terminated.")
-    # ------------------------------------------
 
         return reward, terminated
 
 
     #
-    # Run one timestep of the environment’s dynamics using the agent actions.
+    # Corre um Timestamp do teste
     #
     def step(self, action):
 
-        print(f"ACTION step: {action}")
 
-        self.apply_action(action) # Apply the action (set motor velocities)
+        self.apply_action(action)
 
-        # Advance the Webots simulation multiple basic time steps
-        # This is where the robot physically moves in the simulation
-        for i in range(20): # Advance 10 basic time steps per Gym step
-            # IMPORTANT: The correct way to step the supervisor is self.step(self.__timestep)
-            # You had a recursive call to self.step(self.__timestep) which would cause issues.
-            # This line should call the parent Supervisor's step method.
-            if Supervisor.step(self, self.__timestep) == -1: # Corrected call to parent step method
-                print("Webots simulation ended prematurely during step loop.")
-                return self.state.astype(np.float32), 0, True, False, {} # Return terminated if simulation ends
-            # Debugging: Confirm that the Webots simulation is stepping
-            # print(f"Webots simulation step {i+1} of 10.")
+        for i in range(10):
+            if Supervisor.step(self, self.__timestep) == -1:
+                return self.state.astype(np.float32), 0, True, False, {}
 
-        self.state = self.read_sensors() # Read sensor values after simulation has advanced
-        reward, terminated = self.compute_reward(action) # Compute reward and termination status
+        self.state = self.read_sensors()
+        reward, terminated = self.compute_reward(action)
         print(f"Reward: {reward:.2f}, Terminated: {terminated}")
 
         return self.state.astype(np.float32), reward, terminated, False, {}
@@ -366,7 +324,6 @@ def train_ppo():
     print("PPO training finished.")
 
     model.save("ppo_thymio_final")
-    print("Training concluded and model saved.")
 
 def test_ppo_model():
     print("Starting PPO model test...")
@@ -423,8 +380,8 @@ def main():
 
     # --- Uncomment one of these lines to run training or testing with PPO ---
     """
-    #train_ppo()
-    test_ppo_model()
+    train_ppo()
+    #test_ppo_model()
 
 if __name__ == '__main__':
     main()
