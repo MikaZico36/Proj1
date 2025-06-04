@@ -231,18 +231,21 @@ class OpenAIGymEnvironment(Supervisor, gym.Env):
         proximity_sensors = self.get_proximity_sensors()
         ground_sensors = self.get_ground_sensors()
 
-        if self.enable_ground_reward:
-            if min(ground_sensors) < 0.05:
+        if min(ground_sensors) < 0.05:
+
+            if self.enable_ground_reward:
                 reward -= 3
-                terminated = True
-            else:
+            terminated = True
+        else:
+            if self.enable_collision_reward:
                 reward +=0.1
 
-        if self.enable_collision_reward:
-            if max(proximity_sensors) > 0.95:
+        if max(proximity_sensors) > 0.95:
+            if self.enable_collision_reward:
                 reward -= 3
-                terminated = True
-            else:
+            terminated = True
+        else:
+            if self.enable_collision_reward:
                 reward += 0.1
 
 
@@ -276,16 +279,21 @@ class OpenAIGymEnvironment(Supervisor, gym.Env):
         MOVEMENT_THRESHOLD = 0.05
 
 
-        if self.enable_stagnation_penalty:
-            if len(self.visited_positions) >= STAGNATION_STEPS:
-                recent_positions = self.visited_positions[-STAGNATION_STEPS:]
-                total_movement = sum(
-                    np.linalg.norm(recent_positions[i] - recent_positions[i - 1])
-                    for i in range(1, len(recent_positions))
-                )
-                if total_movement < MOVEMENT_THRESHOLD:
+        if len(self.visited_positions) >= STAGNATION_STEPS:
+            recent_positions = self.visited_positions[-STAGNATION_STEPS:]
+            total_movement = sum(
+                np.linalg.norm(recent_positions[i] - recent_positions[i - 1])
+                for i in range(1, len(recent_positions))
+            )
+            if total_movement < MOVEMENT_THRESHOLD:
+                if self.enable_stagnation_penalty:
                     reward -= 0.5
-                    terminated = True
+                terminated = True
+
+        # Verifica o limite de tempo
+        if self.steps_since_reset >= self.max_episode_steps:
+            truncated = True
+
 
         return reward, terminated
 
@@ -864,10 +872,10 @@ def train_recurrent_ppo_no_linear_vel_reward():
 # com o vosso caminho
 #
 def main():
-    train_recurrent_ppo_no_randomize()
+    #train_recurrent_ppo_no_randomize()
     #train_recurrent_ppo_no_ground_penalty()
     #train_recurrent_ppo_no_collision_penalty()
-    #train_recurrent_ppo_no_movement_reward()
+    train_recurrent_ppo_no_movement_reward()
     #train_recurrent_ppo_no_linear_vel_reward()
 
     #train_ppo_no_randomize()
