@@ -225,7 +225,7 @@ class OpenAIGymEnvironment(Supervisor, gym.Env):
 
 
     #Função de recompensa do Thymio
-    def compute_reward(self, action):
+    def reward(self, action):
         reward = 0
         terminated = False
         truncated = False
@@ -233,10 +233,11 @@ class OpenAIGymEnvironment(Supervisor, gym.Env):
         proximity_sensors = self.get_proximity_sensors()
         ground_sensors = self.get_ground_sensors()
 
+        #if min(ground_sensors) < 0.4:
 
         if min(ground_sensors) < 0.68:
             if self.enable_ground_reward:
-                reward -= 3
+                reward -= 1
             terminated = True
         else:
             if self.enable_collision_reward:
@@ -247,7 +248,7 @@ class OpenAIGymEnvironment(Supervisor, gym.Env):
 
         if max(proximity_sensors) > 0.98:
             if self.enable_collision_reward:
-                reward -= 3
+                reward -= 1
             terminated = True
         else:
             if self.enable_collision_reward:
@@ -267,7 +268,7 @@ class OpenAIGymEnvironment(Supervisor, gym.Env):
                 if action[0] > action[1]:
                     reward += 0.2 * (right_side_prox - left_side_prox)
 
-
+        """
         left_ground = ground_sensors[0]
         right_ground = ground_sensors[1]
 
@@ -284,7 +285,7 @@ class OpenAIGymEnvironment(Supervisor, gym.Env):
                 reward += turn_reward
             else:
                 reward -= turn_reward
-
+        """
         current_pos = self.get_robot_position()
         if self.enable_movement_reward:
             if self.prev_pos is not None:
@@ -315,10 +316,9 @@ class OpenAIGymEnvironment(Supervisor, gym.Env):
                     break
             self.visited_positions.append(current_pos)
 
-
+        """
         angular_velocity = abs(action[1] - action[0])
         reward += 0.1 * angular_velocity
-
 
         vel_linear = (action[0] + action[1]) / 2
 
@@ -327,7 +327,7 @@ class OpenAIGymEnvironment(Supervisor, gym.Env):
                 reward += 1 * vel_linear
             else:
                 reward -= 0.5 * abs(vel_linear)
-
+        """
         if self.steps_since_reset >= self.max_episode_steps:
             truncated = True
 
@@ -344,7 +344,7 @@ class OpenAIGymEnvironment(Supervisor, gym.Env):
                 return self.state.astype(np.float32), 0, True, False, {}
 
         self.state = self.read_sensors()
-        reward, terminated, truncated = self.compute_reward(action)
+        reward, terminated, truncated = self.reward(action)
         self.steps_since_reset += 1
         print(f"Reward: {reward:.2f}, Terminated: {terminated}, Truncated: {truncated}, Steps: {self.steps_since_reset}/{self.max_episode_steps}")
 
@@ -481,6 +481,77 @@ def train_recurrent_ppo():
 
     env.close()
 
+#Treino de um modelo Recurrent PPO anteriormente desenvolvido
+def train_recurrent_ppo_continued(
+        model_path: str,
+        initial_learning_rate: float,
+        total_timesteps_to_add: int,
+        new_tensorboard_log_name: str = "recurrent_ppo_def_continued",
+        save_prefix: str = "recurrent_ppo_def_thymio_continued"
+):
+
+    env = OpenAIGymEnvironment()
+    if not os.path.exists(model_path):
+        print(f"Erro: Modelo pré-treinado não encontrado em '{model_path}'. Por favor, verifique o caminho.")
+        env.close()
+        return
+
+    checkpoints_save_path = f'./{save_prefix}_checkpoints/'
+    best_model_save_path = f'./{save_prefix}_best_model/'
+    eval_logs_path = f'./{save_prefix}_eval_logs/'
+    tensorboard_log_path = "./recurrent_ppo_def_continued_tensorboard/"
+    tensorboard_root_log_path = "./tensorboard_logs_all_runs/"
+
+    os.makedirs(checkpoints_save_path, exist_ok=True)
+    os.makedirs(best_model_save_path, exist_ok=True)
+    os.makedirs(eval_logs_path, exist_ok=True)
+    os.makedirs(tensorboard_log_path, exist_ok=True)
+
+    def linear_learning_rate_schedule(progress_remaining: float) -> float:
+        return initial_learning_rate * progress_remaining
+
+
+    model = RecurrentPPO.load(
+        path=model_path,
+        env=env,
+        verbose=1,
+        tensorboard_log=tensorboard_root_log_path
+
+    )
+
+    model.learning_rate = linear_learning_rate_schedule
+
+
+    checkpoint_callback = CheckpointCallback(
+        save_freq=10000,
+        save_path=checkpoints_save_path,
+        name_prefix=save_prefix
+    )
+
+    eval_callback = EvalCallback(
+        env,
+        best_model_save_path=best_model_save_path,
+        log_path=eval_logs_path,
+        eval_freq=10000,
+        n_eval_episodes=10,
+        deterministic=True,
+        render=False
+    )
+
+    print("Starting Recurrent PPO training...")
+    model.learn(
+        total_timesteps=total_timesteps_to_add,
+        callback=[checkpoint_callback, eval_callback],
+        reset_num_timesteps=False,
+        tb_log_name=new_tensorboard_log_name,
+    )
+    print("Recurrent PPO training finished.")
+
+
+    final_model_name = f"{save_prefix}_final.zip"
+    model.save(final_model_name)
+
+    env.close()
 
 
 #Teste do recurrent PPO
@@ -488,7 +559,7 @@ def test_recurrent_ppo_model():
     print("Starting Recurrent PPO model test...")
     env = OpenAIGymEnvironment()
     try:
-        model = RecurrentPPO.load("recurrent_ppo_best_model/best_model.zip")
+        model = RecurrentPPO.load("recurrent_ppo_def_thymio_final.zip")
     except Exception as e:
         print(f"ERROR: Could not load model 'recurrent_ppo_thymio_final'. Make sure it exists. Error: {e}")
         return
@@ -923,9 +994,10 @@ def main():
     #train_recurrent_ppo_tahn_relu()
 
 
-    train_ppo()
+    #train_ppo()
     #test_ppo_model()
     #train_recurrent_ppo()
+    train_recurrent_ppo_continued("recurrent_ppo_def_thymio_final.zip",5e-5 , 500000 )
     #test_recurrent_ppo_model()
 
 
