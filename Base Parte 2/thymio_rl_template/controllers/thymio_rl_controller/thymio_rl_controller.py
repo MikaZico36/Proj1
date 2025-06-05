@@ -19,7 +19,7 @@ except ImportError:
 
 # Structure of a class to create an OpenAI Gym in Webots.
 class OpenAIGymEnvironment(Supervisor, gym.Env):
-    def __init__(self, max_episode_steps=2000, enable_ground_reward=True, enable_collision_reward=True, enable_movement_reward=True, enable_linear_vel_reward=True, randomize_on_reset=True): # Set a concrete value for max_episode_steps
+    def __init__(self, max_episode_steps=1500, enable_ground_reward=True, enable_collision_reward=True, enable_movement_reward=True, enable_linear_vel_reward=True, randomize_on_reset=True): # Set a concrete value for max_episode_steps
         super().__init__()
         self.spec = gym.envs.registration.EnvSpec(id='WebotsEnv-v0', entry_point='openai_gym:OpenAIGymEnvironment', max_episode_steps=max_episode_steps)
         self.__timestep = int(self.getBasicTimeStep())
@@ -233,50 +233,76 @@ class OpenAIGymEnvironment(Supervisor, gym.Env):
         proximity_sensors = self.get_proximity_sensors()
         ground_sensors = self.get_ground_sensors()
 
-        print(f"PROXIMITY_SENSORS: {proximity_sensors}")
-        print(f"GROUND_SENSORS: {ground_sensors}")
 
-        if min(ground_sensors) < 0.7:
-
+        if min(ground_sensors) < 0.68:
             if self.enable_ground_reward:
                 reward -= 3
             terminated = True
-        """else:
+        else:
             if self.enable_collision_reward:
                 for val in ground_sensors:
                     if 0.05 < val < 0.2:
-                        reward -=0.5 * (0.2 - val)
-            """
-        if max(proximity_sensors) > 0.95:
+                        reward -= 0.5 * (0.2 - val)
+
+
+        if max(proximity_sensors) > 0.98:
             if self.enable_collision_reward:
                 reward -= 3
             terminated = True
-        """else:
+        else:
             if self.enable_collision_reward:
                 safety_bonus = 0.5 * (1 - max(proximity_sensors))
                 reward += safety_bonus
-            """
 
-        """
-        left_side_prox = np.mean(proximity_sensors[[0,1]])
-        right_side_prox = np.mean(proximity_sensors[[3,4]])
+
+        left_side_prox = np.mean(proximity_sensors[[0, 1]])
+        right_side_prox = np.mean(proximity_sensors[[3, 4]])
         center_prox = proximity_sensors[2]
 
         if center_prox > 0.5:
             if right_side_prox < left_side_prox:
                 if action[1] > action[0]:
-                    reward +=0.2 * (left_side_prox - right_side_prox)
+                    reward += 0.2 * (left_side_prox - right_side_prox)
             elif left_side_prox < right_side_prox:
                 if action[0] > action[1]:
-                    reward +=0.2 * (right_side_prox - left_side_prox)
-    
-        """
+                    reward += 0.2 * (right_side_prox - left_side_prox)
+
+
+        left_ground = ground_sensors[0]
+        right_ground = ground_sensors[1]
+
+        if left_ground < 0.7 and right_ground >= 0.7:
+            turn_reward = 0.5 * (0.7 - left_ground)
+            if action[1] > action[0]:
+                reward += turn_reward
+            else:
+                reward -= turn_reward
+
+        elif right_ground < 0.7 and left_ground >= 0.7:
+            turn_reward = 0.5 * (0.7 - right_ground)
+            if action[0] > action[1]:
+                reward += turn_reward
+            else:
+                reward -= turn_reward
 
         current_pos = self.get_robot_position()
         if self.enable_movement_reward:
             if self.prev_pos is not None:
                 delta_pos = np.linalg.norm(current_pos - self.prev_pos)
                 reward += 0.5 * delta_pos
+
+
+                if delta_pos < 0.01:
+                    if not hasattr(self, 'steps_no_move'):
+                        self.steps_no_move = 1
+                    else:
+                        self.steps_no_move += 1
+                else:
+                    self.steps_no_move = 0
+
+
+                if hasattr(self, 'steps_no_move') and self.steps_no_move > 20:
+                    reward -= 3  # penalidade forte
 
             self.prev_pos = current_pos
 
@@ -289,6 +315,11 @@ class OpenAIGymEnvironment(Supervisor, gym.Env):
                     break
             self.visited_positions.append(current_pos)
 
+
+        angular_velocity = abs(action[1] - action[0])
+        reward += 0.1 * angular_velocity
+
+
         vel_linear = (action[0] + action[1]) / 2
 
         if self.enable_linear_vel_reward:
@@ -300,9 +331,7 @@ class OpenAIGymEnvironment(Supervisor, gym.Env):
         if self.steps_since_reset >= self.max_episode_steps:
             truncated = True
 
-
         return reward, terminated, truncated
-
 
     # Corre um Timestamp do teste
     def step(self, action):
@@ -335,10 +364,10 @@ def train_ppo():
         env,
         verbose=1,
         learning_rate=5e-5,
-        batch_size=32,
-        n_steps=1024,
+        batch_size=128,
+        n_steps=2048,
         gamma=0.99,
-        ent_coef=0.05,
+        ent_coef=0.01,
         clip_range=0.2,
         gae_lambda=0.95,
         vf_coef=0.5,
@@ -362,7 +391,7 @@ def train_ppo():
     )
 
     print("Starting PPO training...")
-    model.learn(total_timesteps=200000, callback=[checkpoint_callback, eval_callback], tb_log_name="ppo")
+    model.learn(total_timesteps=310000, callback=[checkpoint_callback, eval_callback], tb_log_name="ppo")
     print("PPO training finished.")
 
     model.save("ppo_thymio_final")
@@ -409,45 +438,46 @@ def test_ppo_model():
 def train_recurrent_ppo():
     env = OpenAIGymEnvironment()
 
-    if not os.path.exists('./recurrent_ppo_checkpoints'):
-        os.makedirs('./recurrent_ppo_checkpoints')
+    if not os.path.exists('./recurrent_ppo_def_checkpoints'):
+        os.makedirs('./recurrent_ppo_def_checkpoints')
 
     model = RecurrentPPO(
         "MlpLstmPolicy",
         env,
         verbose=1,
-        learning_rate=5e-5,
-        batch_size=64,
-        n_steps=256,
+        learning_rate=1e-4,
+        batch_size=128,
+        n_steps=2048,
         gamma=0.99,
-        ent_coef=0.05,
+        ent_coef=0.03,
         clip_range=0.2,
         gae_lambda=0.95,
         vf_coef=0.5,
         max_grad_norm=0.5,
-        tensorboard_log="./recurrent_ppo_tensorboard/"
+        tensorboard_log="./recurrent_ppo_def_tensorboard/"
     )
 
     checkpoint_callback = CheckpointCallback(
-        save_freq=10000,
-        save_path='./recurrent_ppo_checkpoints/',
-        name_prefix='recurrent_ppo_thymio'
+        save_freq=20000,
+        save_path='./recurrent_ppo_def_checkpoints/',
+        name_prefix='recurrent_ppo_def_thymio'
     )
 
     eval_callback = EvalCallback(
         env,
-        best_model_save_path='./recurrent_ppo_best_model/',
-        log_path='./recurrent_ppo_eval_logs/',
-        eval_freq=10000,
+        best_model_save_path='./recurrent_ppo_def_best_model/',
+        log_path='./recurrent_ppo_def_eval_logs/',
+        eval_freq=20000,
+        n_eval_episodes=10,
         deterministic=True,
         render=False
     )
 
     print("Starting Recurrent PPO training...")
-    model.learn(total_timesteps=200000, callback=[checkpoint_callback, eval_callback],tb_log_name="recurrent_ppo")
+    model.learn(total_timesteps=1000000, callback=[checkpoint_callback, eval_callback],tb_log_name="recurrent_ppo_def")
     print("Recurrent PPO training finished.")
 
-    model.save("recurrent_ppo_thymio_final")
+    model.save("recurrent_ppo_def_thymio_final")
 
     env.close()
 
@@ -458,7 +488,7 @@ def test_recurrent_ppo_model():
     print("Starting Recurrent PPO model test...")
     env = OpenAIGymEnvironment()
     try:
-        model = RecurrentPPO.load("recurrent_ppo_thymio_final")
+        model = RecurrentPPO.load("recurrent_ppo_best_model/best_model.zip")
     except Exception as e:
         print(f"ERROR: Could not load model 'recurrent_ppo_thymio_final'. Make sure it exists. Error: {e}")
         return
@@ -890,10 +920,10 @@ def main():
 
 
     #train_ppo_relu_tanh()
-    train_recurrent_ppo_tahn_relu()
+    #train_recurrent_ppo_tahn_relu()
 
 
-    #train_ppo()
+    train_ppo()
     #test_ppo_model()
     #train_recurrent_ppo()
     #test_recurrent_ppo_model()
