@@ -1,6 +1,7 @@
 import os
 import sys
 
+from stable_baselines3.common.monitor import Monitor
 from torch import nn
 
 try:
@@ -19,7 +20,7 @@ except ImportError:
 
 # Structure of a class to create an OpenAI Gym in Webots.
 class OpenAIGymEnvironment(Supervisor, gym.Env):
-    def __init__(self, max_episode_steps=1500, enable_ground_reward=True, enable_collision_reward=True, enable_movement_reward=True, enable_linear_vel_reward=True, randomize_on_reset=True): # Set a concrete value for max_episode_steps
+    def __init__(self, max_episode_steps=1000, enable_ground_reward=True, enable_collision_reward=True, enable_movement_reward=True, enable_linear_vel_reward=True, randomize_on_reset=True): # Set a concrete value for max_episode_steps
         super().__init__()
         self.spec = gym.envs.registration.EnvSpec(id='WebotsEnv-v0', entry_point='openai_gym:OpenAIGymEnvironment', max_episode_steps=max_episode_steps)
         self.__timestep = int(self.getBasicTimeStep())
@@ -82,6 +83,15 @@ class OpenAIGymEnvironment(Supervisor, gym.Env):
         self.prev_pos = None
         self.visited_positions = []
 
+        self.boxes = []
+        for i in range(1, 6):
+            box_node = self.getFromDef(f"BOX{i}")
+            if box_node:
+                self.boxes.append(box_node)
+            else:
+                print(f"WARNING: BOX{i} not found in the scene.")
+
+
         self.obstacles = []
         for i in range(5):
             obstacle = self.getFromDef(f"OBSTACLE_{i+1}")
@@ -100,7 +110,7 @@ class OpenAIGymEnvironment(Supervisor, gym.Env):
     #Deteta a colisão do Thymio com os obstáculos
     def collision_detected(self):
         proximity_vals = np.array([sensor.getValue() for sensor in self.proximity_sensors])
-        if np.any(proximity_vals[[1, 2, 3]] > 3500):
+        if np.any(proximity_vals[[1, 2, 3]] > 3000):
             return True
         return False
 
@@ -154,6 +164,29 @@ class OpenAIGymEnvironment(Supervisor, gym.Env):
 
 
 
+    def check_box_visits(self):
+        current_pos = self.get_robot_position()
+        visit_radius = 0.3  # raio para considerar visita (ajuste conforme necessário)
+
+        rewards = 0
+        for i, box in enumerate(self.boxes, start=1):
+            box_pos_field = box.getField("translation")
+            box_pos = np.array(box_pos_field.getSFVec3f()[:2])
+
+            dist = np.linalg.norm(current_pos - box_pos)
+            if dist < visit_radius and (i not in self.visited_boxes):
+                self.visited_boxes.add(i)
+                rewards += 5
+                print(f"Visited BOX{i}!")
+
+        if len(self.visited_boxes) == len(self.boxes):
+            print("All boxes visited! Resetting visits and giving bonus reward.")
+            self.visited_boxes = set()
+            rewards += 10
+
+        return rewards
+
+
     #Função que lê os sensores do Thymio
     def read_sensors(self):
         proximity_values = {}
@@ -175,7 +208,10 @@ class OpenAIGymEnvironment(Supervisor, gym.Env):
         return obs
 
     #Recebe a ação a tomar, interpreta-a a executa-a
-    def apply_action(self, action):
+    def apply_action(self, action, training=True):
+        if training:
+            noise = np.random.normal(0, 0.2, size=action.shape)
+            action = np.clip(action + noise, -9, 9)
 
         left_speed = float(np.clip(action[0], -9, 9))
         right_speed = float(np.clip(action[1], -9, 9))
@@ -203,6 +239,8 @@ class OpenAIGymEnvironment(Supervisor, gym.Env):
         self.prev_pos = None
         self.visited_positions = []
 
+        self.visited_boxes = set()
+
         self.left_motor.setPosition(float('inf'))
         self.right_motor.setPosition(float('inf'))
         self.left_motor.setVelocity(0)
@@ -224,7 +262,7 @@ class OpenAIGymEnvironment(Supervisor, gym.Env):
         return np.array(init_state).astype(np.float32), {}
 
 
-    #Função de recompensa do Thymio
+            #Calcula a reward
     def reward(self, action):
         reward = 0
         terminated = False
@@ -232,112 +270,68 @@ class OpenAIGymEnvironment(Supervisor, gym.Env):
 
         proximity_sensors = self.get_proximity_sensors()
         ground_sensors = self.get_ground_sensors()
-
-        #if min(ground_sensors) < 0.4:
-
-        if min(ground_sensors) < 0.68:
-            if self.enable_ground_reward:
-                reward -= 1
-            terminated = True
-        else:
-            if self.enable_collision_reward:
-                for val in ground_sensors:
-                    if 0.05 < val < 0.2:
-                        reward -= 0.5 * (0.2 - val)
-
-
-        if max(proximity_sensors) > 0.98:
-            if self.enable_collision_reward:
-                reward -= 1
-            terminated = True
-        else:
-            if self.enable_collision_reward:
-                safety_bonus = 0.5 * (1 - max(proximity_sensors))
-                reward += safety_bonus
-
-
-        left_side_prox = np.mean(proximity_sensors[[0, 1]])
-        right_side_prox = np.mean(proximity_sensors[[3, 4]])
-        center_prox = proximity_sensors[2]
-
-        if center_prox > 0.5:
-            if right_side_prox < left_side_prox:
-                if action[1] > action[0]:
-                    reward += 0.2 * (left_side_prox - right_side_prox)
-            elif left_side_prox < right_side_prox:
-                if action[0] > action[1]:
-                    reward += 0.2 * (right_side_prox - left_side_prox)
-
-        """
-        left_ground = ground_sensors[0]
-        right_ground = ground_sensors[1]
-
-        if left_ground < 0.7 and right_ground >= 0.7:
-            turn_reward = 0.5 * (0.7 - left_ground)
-            if action[1] > action[0]:
-                reward += turn_reward
-            else:
-                reward -= turn_reward
-
-        elif right_ground < 0.7 and left_ground >= 0.7:
-            turn_reward = 0.5 * (0.7 - right_ground)
-            if action[0] > action[1]:
-                reward += turn_reward
-            else:
-                reward -= turn_reward
-        """
         current_pos = self.get_robot_position()
+
+        if self.enable_ground_reward:
+            # Evitar quedas do cenário
+            if min(ground_sensors) < 0.68:
+                reward -=10
+                terminated = True
+                return reward, terminated,truncated
+
+        # Recompensa negativa por colisões
+        if self.collision_detected():
+            if self.enable_collision_reward:
+                reward -= 5
+                terminated = True
+                return reward, terminated,truncated
+
+        # Explorar o espaço
         if self.enable_movement_reward:
-            if self.prev_pos is not None:
-                delta_pos = np.linalg.norm(current_pos - self.prev_pos)
-                reward += 0.5 * delta_pos
+            if self.prev_pos is None:
+                self.prev_pos = current_pos
+                delta = 0
+            else:
+                delta = np.linalg.norm(current_pos - self.prev_pos)
+
+            reward += 0.5 * delta
 
 
-                if delta_pos < 0.01:
-                    if not hasattr(self, 'steps_no_move'):
-                        self.steps_no_move = 1
-                    else:
-                        self.steps_no_move += 1
+
+            if delta < 0.01:
+                if not hasattr(self, "steps_stuck"):
+                    self.steps_stuck = 1
                 else:
-                    self.steps_no_move = 0
+                    self.steps_stuck += 1
+            else:
+                self.steps_stuck = 0
 
-
-                if hasattr(self, 'steps_no_move') and self.steps_no_move > 20:
-                    reward -= 3  # penalidade forte
+            if self.steps_stuck > 60:
+                reward -= 3.0
 
             self.prev_pos = current_pos
 
-            if not hasattr(self, 'visited_positions'):
-                self.visited_positions = []
+        reward += self.check_box_visits()
 
-            for pos in self.visited_positions:
-                if np.linalg.norm(current_pos - pos) < 0.1:
-                    reward -= 0.1
-                    break
-            self.visited_positions.append(current_pos)
+        # Valorizar velocidades lineares positivas
+        vel_left, vel_right = action
+        vel_linear = (vel_left + vel_right) / 2.0
 
-        """
-        angular_velocity = abs(action[1] - action[0])
-        reward += 0.1 * angular_velocity
+        if vel_linear > 0:
+            reward += .6 * vel_linear  # avançar vale mais
+        else:
+            reward += 0.2 * abs(vel_linear)
 
-        vel_linear = (action[0] + action[1]) / 2
-
-        if self.enable_linear_vel_reward:
-            if vel_linear > 0:
-                reward += 1 * vel_linear
-            else:
-                reward -= 0.5 * abs(vel_linear)
-        """
+        # Termina o episódio
         if self.steps_since_reset >= self.max_episode_steps:
             truncated = True
 
         return reward, terminated, truncated
 
     # Corre um Timestamp do teste
-    def step(self, action):
+    def step(self, action, training=True):
 
-
-        self.apply_action(action)
+        self.apply_action(action, training=training)
 
         for i in range(10):
             if Supervisor.step(self, self.__timestep) == -1:
@@ -349,7 +343,6 @@ class OpenAIGymEnvironment(Supervisor, gym.Env):
         print(f"Reward: {reward:.2f}, Terminated: {terminated}, Truncated: {truncated}, Steps: {self.steps_since_reset}/{self.max_episode_steps}")
 
         return self.state.astype(np.float32), reward, terminated, truncated, {}
-
 
 
 #PPO treino
@@ -438,6 +431,7 @@ def test_ppo_model():
 def train_recurrent_ppo():
     env = OpenAIGymEnvironment()
 
+    env = Monitor(env)
     if not os.path.exists('./recurrent_ppo_def_checkpoints'):
         os.makedirs('./recurrent_ppo_def_checkpoints')
 
@@ -458,26 +452,21 @@ def train_recurrent_ppo():
     )
 
     checkpoint_callback = CheckpointCallback(
-        save_freq=20000,
+        save_freq=10000,
         save_path='./recurrent_ppo_def_checkpoints/',
         name_prefix='recurrent_ppo_def_thymio'
     )
 
-    eval_callback = EvalCallback(
-        env,
-        best_model_save_path='./recurrent_ppo_def_best_model/',
-        log_path='./recurrent_ppo_def_eval_logs/',
-        eval_freq=20000,
-        n_eval_episodes=10,
-        deterministic=True,
-        render=False
-    )
+    with open("recurrent_ppo_def_config.txt", "w") as f:
+        f.write(str(model.get_parameters()))
 
     print("Starting Recurrent PPO training...")
-    model.learn(total_timesteps=1000000, callback=[checkpoint_callback, eval_callback],tb_log_name="recurrent_ppo_def")
+    model.learn(total_timesteps=1500000, callback=[checkpoint_callback],tb_log_name="recurrent_ppo_def")
     print("Recurrent PPO training finished.")
 
     model.save("recurrent_ppo_def_thymio_final")
+
+
 
     env.close()
 
@@ -996,8 +985,8 @@ def main():
 
     #train_ppo()
     #test_ppo_model()
-    #train_recurrent_ppo()
-    train_recurrent_ppo_continued("recurrent_ppo_def_thymio_final.zip",5e-5 , 500000 )
+    train_recurrent_ppo()
+    #train_recurrent_ppo_continued("recurrent_ppo_def_thymio_final.zip",5e-5 , 500000 )
     #test_recurrent_ppo_model()
 
 
