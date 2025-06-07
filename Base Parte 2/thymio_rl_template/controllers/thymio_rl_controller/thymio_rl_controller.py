@@ -174,10 +174,12 @@ class OpenAIGymEnvironment(Supervisor, gym.Env):
             box_pos = np.array(box_pos_field.getSFVec3f()[:2])
 
             dist = np.linalg.norm(current_pos - box_pos)
-            if dist < visit_radius and (i not in self.visited_boxes):
-                self.visited_boxes.add(i)
-                rewards += 5
-                print(f"Visited BOX{i}!")
+            if i != 1 or len(self.visited_boxes) > 1:
+
+                if dist < visit_radius and (i not in self.visited_boxes):
+                    self.visited_boxes.add(i)
+                    rewards += 5 + self.steps_since_reset * 0.1
+                    print(f"Visited BOX{i}!")
 
         if len(self.visited_boxes) == len(self.boxes):
             print("All boxes visited! Resetting visits and giving bonus reward.")
@@ -275,17 +277,25 @@ class OpenAIGymEnvironment(Supervisor, gym.Env):
         if self.enable_ground_reward:
             # Evitar quedas do cenário
             if min(ground_sensors) < 0.68:
-                reward -=10
+
+                reward -=5
                 terminated = True
                 return reward, terminated,truncated
+            elif min(ground_sensors) > 0.71:
+                reward += 0.02
 
         # Recompensa negativa por colisões
-        if self.collision_detected():
+        if max(sensor.getValue() for sensor in self.proximity_sensors) > 0.92:
             if self.enable_collision_reward:
-                reward -= 10
+                reward -= 5
                 terminated = True
-                return reward, terminated,truncated
+                return reward, terminated,
 
+        elif max(sensor.getValue() for sensor in self.proximity_sensors) < 0.1:
+            reward += 0.05
+
+        else:
+            reward += 0.2
         # Explorar o espaço
         if self.enable_movement_reward:
             if self.prev_pos is None:
@@ -349,6 +359,8 @@ class OpenAIGymEnvironment(Supervisor, gym.Env):
 #PPO treino
 def train_ppo():
     env = OpenAIGymEnvironment()
+
+    env = Monitor(env)
 
     if not os.path.exists('./ppo_checkpoints'):
         os.makedirs('./ppo_checkpoints')
