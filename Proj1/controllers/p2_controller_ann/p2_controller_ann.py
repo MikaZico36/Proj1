@@ -99,7 +99,7 @@ class Evolution:
 #mas pode ser alterada com o melhor individo do ficheiro melhores_individuos_p_geraçao
     def run(self):
         self.evaluation_start_time = self.supervisor.getTime()
-        best_weights = [-1.2136282457662635, -0.08634616431344548, -0.806697703532252, 0.22454555022130443, -0.4058661198958592, 0.5864504885042218, 0.9680180465117361, -0.8653839456688865, 0.2955079363773683, -0.46501488604669294, 0.5256307457201669, -0.3940423312423391, 1.0620960837791453, 1.4029185181678052, 0.16743434205057053, -0.28070852525817236, -1.3017390357035323, -0.33372019892086147, -0.08310200243460605, 0.6682485554225366, 0.07526941633101573, -0.6824042493769013]
+        best_weights =  [-1.2712083824918656, -0.09870711301619436, -0.8882914597801875, 0.2406146679803015, -0.30397247348523615, 0.6459257306809923, 0.9938762816756543, -1.0177964919819393, 0.07868669088484652, -0.45224938890444066, 0.49560282302504793, -0.22838867127876983, 1.207296096608691, 1.4849295412977936, 0.27930233460536324, -0.4004557832830647, -1.295611191761208, -0.41845960888851347, 0.011746597978884346, 0.4665892807555994, -0.05785025374680959, -0.44944955042578055]
         weights = get_weights() 
         while self.supervisor.getTime() - self.evaluation_start_time < EVALUATION_TIME and not self.collision:
             self.runRobot(best_weights)
@@ -257,7 +257,7 @@ def get_weights():
     best_wights = []
     best_generation = None
     generation = 0
-    with open("melhores_individuos_p_geracao.txt", 'r') as f:
+    with open("Melhores_individuos_p_geracao.txt", 'r') as f:
         linhas = f.readlines()
 
     for i in range(len(linhas)):
@@ -291,7 +291,7 @@ def have_20_individuals():
 # Função que lê os últimos 20 indivíduos do arquivo e retorna os seus pesos
 #para continuar os treinos
 def get_weights_to_pop():
-    with open("melhores_individuos_p_geracao.txt", 'r') as f:
+    with open("Melhores_individuos_p_geracao.txt", 'r') as f:
         linhas = f.readlines()
         individuos = []
         for i in range(len(linhas)):
