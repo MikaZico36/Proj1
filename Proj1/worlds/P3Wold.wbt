@@ -1,0 +1,431 @@
+#VRML_SIM R2025a utf8
+
+EXTERNPROTO "https://raw.githubusercontent.com/cyberbotics/webots/R2023b/projects/objects/backgrounds/protos/TexturedBackground.proto"
+EXTERNPROTO "https://raw.githubusercontent.com/cyberbotics/webots/R2023b/projects/objects/backgrounds/protos/TexturedBackgroundLight.proto"
+EXTERNPROTO "https://raw.githubusercontent.com/cyberbotics/webots/R2023b/projects/robots/mobsya/thymio/protos/Thymio2.proto"
+EXTERNPROTO "https://raw.githubusercontent.com/cyberbotics/webots/R2023b/projects/objects/solids/protos/SolidBox.proto"
+EXTERNPROTO "https://raw.githubusercontent.com/cyberbotics/webots/R2023b/projects/objects/floors/protos/Floor.proto"
+
+WorldInfo {
+  basicTimeStep 5
+  FPS 30
+  contactProperties [
+    ContactProperties {
+      material2 "thymio body"
+      coulombFriction [
+        0.7
+      ]
+    }
+  ]
+}
+Viewpoint {
+  orientation -0.5368691635866563 0.5388860396477761 0.6491327579644243 1.986638510858888
+  position -0.08362995569812624 -1.6324956667223405 6.080793834170108
+}
+Solid {
+  translation 1 1 0.0001
+  children [
+    Shape {
+      appearance PBRAppearance {
+        baseColor 0 0 0
+      }
+      geometry Box {
+        size 0.25 0.25 0.001
+      }
+    }
+  ]
+  name "BlackArea"
+  boundingObject Box {
+    size 0.25 0.25 1e-120
+  }
+}
+Solid {
+  translation 0.99 0.03 1e-150
+  children [
+    Shape {
+      appearance PBRAppearance {
+        baseColor 0 0 0
+      }
+      geometry Box {
+        size 0.1 1.8 0.001
+      }
+    }
+  ]
+  name "BlackArea(1)"
+  boundingObject Box {
+    size 0.1 2 1e-20
+  }
+}
+Solid {
+  translation -1.06 -0.03 1e-150
+  children [
+    Shape {
+      appearance PBRAppearance {
+        baseColor 0 0 0
+      }
+      geometry Box {
+        size 0.1 1.6 0.001
+      }
+    }
+  ]
+  name "BlackArea(4)"
+  boundingObject Box {
+    size 0.1 2 1e-20
+  }
+}
+Solid {
+  translation 0.049996 0.99 1e-150
+  rotation 0 0 1 1.5708
+  children [
+    Shape {
+      appearance PBRAppearance {
+        baseColor 0 0 0
+      }
+      geometry Box {
+        size 0.1 1.8 0.001
+      }
+    }
+  ]
+  name "BlackArea(2)"
+  boundingObject Box {
+    size 0.1 2 1e-20
+  }
+}
+Solid {
+  translation -0.952341 0.882337 1e-150
+  rotation 0 0 1 2.3562
+  children [
+    Shape {
+      appearance PBRAppearance {
+        baseColor 0 0 0
+      }
+      geometry Box {
+        size 0.1 0.38 0.001
+      }
+    }
+  ]
+  name "BlackArea(5)"
+  boundingObject Box {
+    size 0.1 2 1e-20
+  }
+}
+Solid {
+  translation 0.857858 -0.970266 1e-150
+  rotation 0 0 1 2.3562
+  children [
+    Shape {
+      appearance PBRAppearance {
+        baseColor 0 0 0
+      }
+      geometry Box {
+        size 0.1 0.38 0.001
+      }
+    }
+  ]
+  name "BlackArea(6)"
+  boundingObject Box {
+    size 0.1 2 1e-20
+  }
+}
+Solid {
+  translation -0.945254 -0.949082 1e-150
+  rotation 0 0 -1 -0.7854053071795866
+  children [
+    Shape {
+      appearance PBRAppearance {
+        baseColor 0 0 0
+      }
+      geometry Box {
+        size 0.1 0.38 0.001
+      }
+    }
+  ]
+  name "BlackArea(7)"
+  boundingObject Box {
+    size 0.1 2 1e-20
+  }
+}
+Solid {
+  translation -0.0399971 -1.08 1e-150
+  rotation 0 0 1 1.5708
+  children [
+    Shape {
+      appearance PBRAppearance {
+        baseColor 0 0 0
+      }
+      geometry Box {
+        size 0.1 1.6 0.001
+      }
+    }
+  ]
+  name "BlackArea(3)"
+  boundingObject Box {
+    size 0.1 2 1e-20
+  }
+}
+TexturedBackground {
+}
+TexturedBackgroundLight {
+}
+SolidBox {
+  translation -1.55 -7.27379e-06 0
+  rotation 0 0 1 4.692820414042842e-06
+  name "box(1)"
+  size 0.1 3.2 0.5
+  appearance PBRAppearance {
+    baseColor 0.8 0.8 0.8
+    roughness 0.5
+    metalness 0
+  }
+}
+SolidBox {
+  translation 1.55 7.27393e-06 0
+  rotation 0 0 1 4.692820414042842e-06
+  name "box(2)"
+  size 0.1 3.2 0.5
+  appearance PBRAppearance {
+    baseColor 0.8 0.8 0.8
+    roughness 0.5
+    metalness 0
+  }
+}
+SolidBox {
+  translation 0.00999427 1.56 0
+  rotation -7.80236e-07 7.06662e-07 -1 -1.5707953071795862
+  name "box(3)"
+  size 0.1 3.2 0.5
+  appearance PBRAppearance {
+    baseColor 0.8 0.8 0.8
+    roughness 0.5
+    metalness 0
+  }
+}
+SolidBox {
+  translation 0.0100052 -1.55 0
+  rotation 0 0 1 1.5708
+  name "box(4)"
+  size 0.1 3.2 0.5
+  appearance PBRAppearance {
+    baseColor 0.8 0.8 0.8
+    roughness 0.5
+    metalness 0
+  }
+}
+DEF ROBOT Thymio2 {
+  hidden position_0_0 32837.778001756014
+  hidden position_0_1 -11175.276045250754
+  hidden linearVelocity_0 -0.005787855786450604 -0.08072366822855778 9.025957222976863e-05
+  hidden angularVelocity_0 0.004047029071750618 -0.0005100144483347118 2.7645563148572627
+  hidden rotation_1 0.703602275096824 0.7036023225698571 -0.09943646289403037 3.3398139106265714
+  hidden linearVelocity_1 -0.1613498553606442 -0.09397597543924335 -2.448441609295527e-05
+  hidden angularVelocity_1 3.981799014607213 -6.824517563020589 2.7735312192366597
+  hidden rotation_2 -0.6654972389780717 -0.6654972983000509 0.33797451215719915 2.4897491217709464
+  hidden linearVelocity_2 0.08254626846388186 0.04839831533979715 2.991013252140091e-06
+  hidden angularVelocity_2 -2.7868441294175335 4.78573688177676 2.770885556267335
+  translation -0.010464558585254174 -0.02202396588315961 3.2690559350484483e-07
+  rotation 0.004767466710793323 0.0012009933936947717 0.9999879143649836 -2.606693839947622
+  controller "p3_controller_ann"
+  supervisor TRUE
+}
+Floor {
+  size 3 3
+  appearance PBRAppearance {
+    roughness 0.5
+  }
+}
+Solid {
+  translation 0 0.301638 0.0499389
+  rotation 0.008015831507760512 -0.007790079175623296 0.9999375286045009 0.003910716867139998
+  children [
+    Shape {
+      appearance Appearance {
+        material Material {
+          diffuseColor 1 0 0
+        }
+      }
+      geometry Box {
+        size 0.2 0.2 0.2
+      }
+    }
+  ]
+  name "Cubo1"
+  boundingObject Box {
+    size 0.1 0.1 0.1
+  }
+  physics Physics {
+    mass 10
+  }
+}
+Solid {
+  translation 0.4004134155915447 -0.7003322539912744 0.04993856615338769
+  rotation 0.055882646679012576 0.001777081068828017 0.9984357624719896 0.0021507320141190642
+  children [
+    Shape {
+      appearance Appearance {
+        material Material {
+          diffuseColor 1 0 0
+        }
+      }
+      geometry Box {
+        size 0.2 0.2 0.2
+      }
+    }
+  ]
+  name "Cubo2"
+  boundingObject Box {
+    size 0.1 0.1 0.1
+  }
+  physics Physics {
+    mass 10
+  }
+  linearVelocity -8.950270190143526e-06 0.00026996871435839697 5.71257082530252e-06
+  angularVelocity -0.005402340930324361 -0.00017909226894381725 4.500727437289385e-08
+}
+Solid {
+  translation -0.5005542677853306 -0.8000367171766979 0.049938493552833016
+  rotation 0.0021698713492690033 -0.10502940924687511 0.9944667489924337 0.0015775365071984736
+  children [
+    Shape {
+      appearance Appearance {
+        material Material {
+          diffuseColor 1 0 0
+        }
+      }
+      geometry Box {
+        size 0.2 0.2 0.2
+      }
+    }
+  ]
+  name "Cubo3"
+  boundingObject Box {
+    size 0.1 0.1 0.1
+  }
+  physics Physics {
+    mass 10
+  }
+  linearVelocity 0.00027304583866039447 7.86184912850648e-06 9.127040382423955e-06
+  angularVelocity -0.00015733997462108454 0.0054802687337389385 -8.312589339084376e-06
+}
+Solid {
+  translation 0.6999056636203393 0.6999826912762454 0.04993854439109908
+  rotation 0.03898791420706855 0.0012655986740971207 0.9992388807516341 0.003986724675608512
+  children [
+    Shape {
+      appearance Appearance {
+        material Material {
+          diffuseColor 1 0 0
+        }
+      }
+      geometry Box {
+        size 0.2 0.2 0.2
+      }
+    }
+  ]
+  name "Cubo4"
+  boundingObject Box {
+    size 0.1 0.1 0.1
+  }
+  physics Physics {
+    mass 10
+  }
+  linearVelocity -1.4093419716669113e-05 0.0001536619508780744 1.0954879343172407e-05
+  angularVelocity -0.0031064947723304774 -0.00028141342535983866 6.700167470955611e-06
+}
+Solid {
+  translation 0.8000075502040883 -0.49999911291885984 0.049938687500000016
+  rotation 2.1669167368713483e-12 -1.9994777168503872e-11 1 1.6547085022428991e-06
+  children [
+    Shape {
+      appearance Appearance {
+        material Material {
+          diffuseColor 1 0 0
+        }
+      }
+      geometry Box {
+        size 0.2 0.2 0.2
+      }
+    }
+  ]
+  name "Cubo5"
+  boundingObject Box {
+    size 0.1 0.1 0.1
+  }
+  physics Physics {
+    mass 10
+  }
+  linearVelocity 2.429234064078637e-18 -4.53888298050028e-18 -5.32909669889919e-16
+  angularVelocity 8.338318064222102e-17 4.3559516326014477e-17 -8.876887676060511e-18
+}
+Solid {
+  translation -0.7 0.8 0.049938687500000016
+  rotation 0.961558538163133 -0.27213920891408866 -0.036680085294240945 3.44217461631255e-17
+  children [
+    Shape {
+      appearance Appearance {
+        material Material {
+          diffuseColor 1 0 0
+        }
+      }
+      geometry Box {
+        size 0.2 0.2 0.2
+      }
+    }
+  ]
+  name "Cubo6"
+  boundingObject Box {
+    size 0.1 0.1 0.1
+  }
+  physics Physics {
+    mass 10
+  }
+  linearVelocity 1.1950105152250297e-19 1.0439041968088758e-18 -5.416513025008735e-16
+  angularVelocity -4.1633363423443444e-17 -4.163336342344322e-17 -6.182366918777964e-18
+}
+Solid {
+  translation 0.800483 0 0.0499388
+  rotation -0.004520636638053547 0.23954072640759214 0.9708757923836138 0.0005280842176302769
+  children [
+    Shape {
+      appearance Appearance {
+        material Material {
+          diffuseColor 1 0 0
+        }
+      }
+      geometry Box {
+        size 0.2 0.2 0.2
+      }
+    }
+  ]
+  name "Cubo7"
+  boundingObject Box {
+    size 0.1 0.1 0.1
+  }
+  physics Physics {
+    mass 10
+  }
+}
+Solid {
+  translation -0.8000133271405482 1.125266877255319e-05 0.049938753105312185
+  rotation -0.9295529986200571 -0.026449567864116664 -0.3677385526651528 3.875170617617629e-05
+  children [
+    Shape {
+      appearance Appearance {
+        material Material {
+          diffuseColor 1 0 0
+        }
+      }
+      geometry Box {
+        size 0.2 0.2 0.2
+      }
+    }
+  ]
+  name "Cubo8"
+  boundingObject Box {
+    size 0.1 0.1 0.1
+  }
+  physics Physics {
+    mass 10
+  }
+  linearVelocity 2.7707772609769638e-08 1.8314399268759548e-06 -7.872629962157872e-08
+  angularVelocity 3.0849533103935436e-05 4.053743619947256e-08 3.399540496584577e-05
+}
