@@ -24,12 +24,13 @@ ANN_PARAMS = 140
 NO_IMPROVEMENT_LIMIT = 40
 
 
+# Função para gerar uma rotação aleatória no formato [x, y, z, angle]
 def random_orientation():
     angle = np.random.uniform(0, 2 * np.pi)
     return [0, 0, 1, angle]
 
+# Função para gerar uma posição aleatória dentro de um círculo, evitando colisões com cubos que ja existem na cena 
 def random_position(min_radius, max_radius, z):
-    # Lista de posições dos cubos no formato [(x1, y1), (x2, y2), ...]
     cube_positions = [
         (0,0.3),
         (0.4,-0.7),
@@ -43,7 +44,6 @@ def random_position(min_radius, max_radius, z):
     safe_distance = 0.5 
 
     while True:
-        # Gera uma posição aleatória
         radius = np.random.uniform(min_radius, max_radius)
         angle = np.random.uniform(0, 2 * np.pi)
         x = radius * np.cos(angle)
@@ -109,6 +109,7 @@ class Evolution:
         self.__n = 0
         self.prev_position = self.supervisor.getSelf().getPosition()
 
+# Função que executa o robo com os melhores pesos encontrados, atualmente manual mas pode ser trocado par ler o ficheiro
     def run(self):
         self.evaluation_start_time = self.supervisor.getTime()
         weights = get_weights()
@@ -116,7 +117,7 @@ class Evolution:
         while self.supervisor.getTime() - self.evaluation_start_time < EVALUATION_TIME and not self.collision:
             self.runRobot(best_weights)
 
-
+# Função que executa o robô com os pesos fornecidos e calcula o fitness
     def runRobot(self, weights):
         fitness = 0
         self.reset()
@@ -161,7 +162,7 @@ class Evolution:
         return fitness
 
 
-
+# Função para reiniciar o robô em uma posição e rotação aleatórias
     def reset(self, seed=None, options=None):
         random_rotation = random_orientation() 
         self.supervisor.getFromDef('ROBOT').getField('rotation').setSFRotation(random_rotation)
@@ -177,34 +178,28 @@ class Evolution:
 def inicialize_population_ann():
     return [{'weights': np.random.uniform(-1, 1, ANN_PARAMS), 'fitness': 0} for _ in range(POPULATION_SIZE)]
 
-
+# Função para realizar a passagem direta (forward pass) da rede neural artificial
 def ann_forward(weights, inputs):
     i = 0
-
-    # Camada 1: input -> hidden1 (8)
     w1 = np.array(weights[i: i + INPUT * 8]).reshape((INPUT, 8))
     i += INPUT * 8
     b1 = np.array(weights[i: i + 8])
     i += 8
 
-    # Camada 2: hidden1 -> hidden2 (6)
     w2 = np.array(weights[i: i + 8 * 6]).reshape((8, 6))
     i += 8 * 6
     b2 = np.array(weights[i: i + 6])
     i += 6
 
-    # Camada 3: hidden2 -> hidden3 (4)
     w3 = np.array(weights[i: i + 6 * 4]).reshape((6, 4))
     i += 6 * 4
     b3 = np.array(weights[i: i + 4])
     i += 4
 
-    # Camada 4: hidden3 -> output (2)
     w4 = np.array(weights[i: i + 4 * 2]).reshape((4, 2))
     i += 4 * 2
     b4 = np.array(weights[i: i + 2])
 
-    # Forward pass
     h1 = np.tanh(np.dot(inputs, w1) + b1)
     h2 = np.tanh(np.dot(h1, w2) + b2)
     h3 = np.tanh(np.dot(h2, w3) + b3)
@@ -212,7 +207,8 @@ def ann_forward(weights, inputs):
 
     return output
 
-
+# Função para realizar o crossover entre dois indivíduos da população
+#NAO É UTILIZADA, APENAS FOI NA FASE INICIAL DA PARTE 3
 def crossover_ann(population):
     new_population = []
     best_fitness = sorted(population, key=lambda x: x['fitness'], reverse=True)[:PARENTS_KEEP]
@@ -228,14 +224,14 @@ def crossover_ann(population):
 
     return new_population[:POPULATION_SIZE]
 
-
+# Função para mutar um indivíduo da população
 def mutate_ann(individual):
     for i in range(ANN_PARAMS):
         if random.random() < MUTATION_RATE:
             individual['weights'][i] += np.random.normal(0, MUTATION_SIZE)
     return individual  
 
-#ELEITISMO
+# Função para criar uma nova população a partir dos melhores indivíduos
 def new_pop(population):
     new_population = []
 
@@ -253,7 +249,7 @@ def new_pop(population):
     return new_population
 
 
-
+# Função para calcular o fitness do robô com base nos sensores e posição
 def calculate_fitness(inputs, fitness, self, visited_areas, last_time_update, last_position):
     supervisor = self.supervisor
     current_time = supervisor.getTime()
@@ -323,6 +319,7 @@ def calculate_fitness(inputs, fitness, self, visited_areas, last_time_update, la
 def sorted_parents(population):
     return sorted(population, key=lambda x: x['fitness'], reverse=True)[:25]
 
+# Função que lê os melhores pesos do arquivo e retorna o melhor indivíduo encontrado
 def get_weights():
     best_fitness = float('-inf')
     best_wights = []
@@ -347,6 +344,7 @@ def get_weights():
     print("Melhor geração:", best_generation)
     return best_wights
 
+# Função para obter os pesos dos melhores indivíduos do arquivo para criação de uma nova geração
 def get_weights_to_pop():
     with open("melhores_individuos.txt", 'r') as f:
         linhas = f.readlines()
@@ -365,7 +363,7 @@ def get_weights_to_pop():
 
         return [ind[1] for ind in individuos]
 
-
+# Função que verifica se o arquivo contém pelo menos 20 indivíduos
 def have_20_individuals():
     with open("melhores_individuos.txt", 'r') as f:
         lines = f.readlines()
@@ -377,7 +375,7 @@ def have_20_individuals():
                     return True
     return False
 
-
+#gera um grafico com do melhor individuo por geraçao
 def plot_graph():
     generations = []
     generation = 0
@@ -412,7 +410,7 @@ def main2():
     controller = Evolution()
     controller.run()
         
-
+#main para treinar a rede 
 def main():
     controller = Evolution()
     if os.path.exists("melhores_individuos.txt") and have_20_individuals():

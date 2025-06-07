@@ -15,23 +15,25 @@ HIDDEN = 4
 OUTPUT = 2
 GENOME_SIZE = (1+INPUT)*HIDDEN  + (HIDDEN+1)*OUTPUT
 GENERATIONS = 1000
-MUTATION_RATE = 0.2
-MUTATION_SIZE = 0.05
+MUTATION_RATE = 0.3
+MUTATION_SIZE = 0.4
 EVALUATION_TIME = 150 # Simulated seconds per individual
 RANGE = 5
 WEIGHTS = 6
 ANN_PARAMS = 22
 
+#Gera uma orientação aleatória para o robô
 def random_orientation():
     angle = np.random.uniform(0, 2 * np.pi)
     return [0, 0, 1, angle] 
 
+# Gera uma posição aleatória dentro de um círculo com raio entre min_radius e max_radius
 def random_position(min_radius, max_radius, z):
     radius = np.random.uniform(min_radius, max_radius)
-    angle = np.random.uniform(0, 2 * np.pi)  # Corrigido para retornar apenas o ângulo
+    angle = np.random.uniform(0, 2 * np.pi) 
     x = radius * np.cos(angle)
     y = radius * np.sin(angle)
-    return [x, y, z]  # Deve retornar uma lista com 3 elementos
+    return [x, y, z]  
 
 class Evolution:
     def __init__(self):
@@ -82,27 +84,30 @@ class Evolution:
         self.prev_position = self.supervisor.getSelf().getPosition()
         self.time_on_line = 0
 
+#função que dá reset ao robo colocando o mesmo numa posição e orientação aleatória 
     def reset(self, seed=None, options=None):
         random_rotation = random_orientation() 
         self.supervisor.getFromDef('ROBOT').getField('rotation').setSFRotation(random_rotation)
 
-        random_pos = random_position(0.8, 0.8, 0)
-        center = [0, 0, 0] 
+        random_pos = random_position(0.4, 0.4, 0)
         self.supervisor.getFromDef('ROBOT').getField('translation').setSFVec3f(random_pos)
 
         self.left_motor.setVelocity(0)
         self.right_motor.setVelocity(0)
 
+#função que corre o melhor robot que foi aprendido, atualmente com pesos fixos,
+#mas pode ser alterada com o melhor individo do ficheiro melhores_individuos_p_geraçao
     def run(self):
         self.evaluation_start_time = self.supervisor.getTime()
-        #best_weights =  [0.5415714249713564, 0.26886237548295844, 0.7761207874495106, -0.4260348739874109, -0.9908881795897919, 0.6643106583749459, -0.4826656248145633, 0.6033248365002477, 0.8826901566888914, 0.8458925161992736, 0.3197980221884944, 0.24555656921134927, 0.9424106648448496, -0.5551927634647345, -0.2091814311937461, 0.7207433516262489, -0.3621457799519938, 0.8783554801291444, 0.7453287109605891, 0.21812111044613047, 0.7015652238157566, 0.6553864364634756]
+        best_weights = [-1.2136282457662635, -0.08634616431344548, -0.806697703532252, 0.22454555022130443, -0.4058661198958592, 0.5864504885042218, 0.9680180465117361, -0.8653839456688865, 0.2955079363773683, -0.46501488604669294, 0.5256307457201669, -0.3940423312423391, 1.0620960837791453, 1.4029185181678052, 0.16743434205057053, -0.28070852525817236, -1.3017390357035323, -0.33372019892086147, -0.08310200243460605, 0.6682485554225366, 0.07526941633101573, -0.6824042493769013]
         weights = get_weights() 
         while self.supervisor.getTime() - self.evaluation_start_time < EVALUATION_TIME and not self.collision:
-            self.runRobot(weights)
+            self.runRobot(best_weights)
 
 #Corre um robô durante o tempo estipulado e a cada movimento calcula o seu fitness. No final, retorna o fitness calculado
     def runRobot(self, weights):
         fitness = 0
+
         self.reset()
         self.evaluation_start_time = self.supervisor.getTime()
         self.time_on_line = 0  # Resetar contador no início da execução
@@ -135,9 +140,11 @@ class Evolution:
             self.supervisor.step(self.timestep)
         return fitness
 
+#Inicia uma população de indivíduos com pesos aleatórios
 def inicialize_population_ann():
     return [{'weights': np.random.uniform(-1, 1, ANN_PARAMS), 'fitness': 0} for _ in range(POPULATION_SIZE)]
 
+# Função que executa a rede neural artificial (ANN) com os pesos e entradas fornecidos
 def ann_forward(weights, inputs):
     w1 = np.array(weights[0:8]).reshape((2, 4))      
     b1 = np.array(weights[8:12])                   
@@ -148,9 +155,11 @@ def ann_forward(weights, inputs):
     output = np.tanh(np.dot(hidden, w2) + b2)
     return output
 
+# Função que ordena a população com base na fitness e seleciona os melhores individuos
 def sorted_parents(population):
     return sorted(population, key=lambda x: x['fitness'], reverse=True)[:PARENTS_KEEP]
 
+# Função que realiza o crossover entre os indivíduos da população
 def crossover_ann(population):
     new_population = []
     best_fitness = sorted(population, key=lambda x: x['fitness'], reverse=True)[:PARENTS_KEEP]
@@ -166,12 +175,31 @@ def crossover_ann(population):
 
     return new_population[:POPULATION_SIZE]
 
+# Função que cria uma nova população baseada nos melhores indivíduos da geração anterior
+def new_pop(population):
+    new_population = []
+
+    # Selecionar os 4 melhores indivíduos da geração anterior
+    best_individuals = population[:4]
+    new_population.extend(best_individuals)
+
+    # Criar mutações dos melhores indivíduos para preencher o restante da população
+    while len(new_population) < POPULATION_SIZE:
+        for parent in best_individuals:
+            if len(new_population) < POPULATION_SIZE:
+                mutated_individual = mutate_ann({'weights': np.copy(parent['weights']), 'fitness': 0})
+                new_population.append(mutated_individual)
+
+    return new_population
+
+# Função que aplica mutações aos pesos de um indivíduo
 def mutate_ann(individual):
     for i in range(ANN_PARAMS):
         if random.random() < MUTATION_RATE:
             individual['weights'][i] += np.random.normal(0, MUTATION_SIZE)
     return individual  
-       
+
+# Função que calcula o fitness do robô com base nos sensores e na posição       
 def calculate_fitness(left_sensor, right_sensor, fitness, supervisor, visited_areas, last_time_update, last_position, times_all_visited=0):
     current_time = supervisor.getTime()
 
@@ -223,13 +251,13 @@ def calculate_fitness(left_sensor, right_sensor, fitness, supervisor, visited_ar
 
     return fitness, last_time_update, (x2, y2), times_all_visited, False
 
-
+# Função que lê os melhores pesos do arquivo e retorna o melhor indivíduo encontrado
 def get_weights():
     best_fitness = float('-inf')
     best_wights = []
     best_generation = None
     generation = 0
-    with open("melhores_individuos.txt", 'r') as f:
+    with open("melhores_individuos_p_geracao.txt", 'r') as f:
         linhas = f.readlines()
 
     for i in range(len(linhas)):
@@ -248,6 +276,7 @@ def get_weights():
     print("Melhor geração:", best_generation)
     return best_wights
 
+# Função que verifica se o arquivo contém pelo menos 20 indivíduos
 def have_20_individuals():
     with open("melhores_individuos.txt", 'r') as f:
         lines = f.readlines()
@@ -259,8 +288,10 @@ def have_20_individuals():
                     return True
     return False
 
+# Função que lê os últimos 20 indivíduos do arquivo e retorna os seus pesos
+#para continuar os treinos
 def get_weights_to_pop():
-    with open("melhores_individuos.txt", 'r') as f:
+    with open("melhores_individuos_p_geracao.txt", 'r') as f:
         linhas = f.readlines()
         individuos = []
         for i in range(len(linhas)):
@@ -275,13 +306,14 @@ def get_weights_to_pop():
         ultimos_individuos = individuos[-POPULATION_SIZE:]
 
         return [ind[1] for ind in ultimos_individuos]
-    
-def plot_graph():
+
+# Função que plota o gráfico de fitness do melhor indivíduo por geração
+def plot_bestGen():
     generations = []
     generation = 0
     fitness = []
 
-    with open("melhores_individuos.txt", 'r') as f:
+    with open("Melhores_individuos_p_geracao.txt", 'r') as f:
         lines = f.readlines()
         for line in lines:
             if line.startswith("Fitness:"):
@@ -305,30 +337,59 @@ def plot_graph():
     else:
         print("Nenhum dado válido encontrado no ficheiro.")
 
+#main que mostra o melhor indivíduo encontrado
 def main2():
     controller = Evolution()
     controller.run()
 
+#main para treinar o robo
 def main():
-    controller = Evolution()
-    if os.path.exists("melhores_individuos.txt") and have_20_individuals():
-        population = get_weights_to_pop()
-        population = [{'weights': np.array(ind), 'fitness': 0} for ind in population]
+    generations_done = 0
+    population = []
+    fitness_history = []
+
+    if os.path.exists("melhores_individuos.txt"):
+        with open("melhores_individuos.txt", "r") as f:
+            lines = f.readlines()
+        current_population = []
+        for line in lines:
+            if line.startswith("Generation:"):
+                generations_done += 1
+                current_population = []
+            elif "Fitness:" in line and "Individual" in line:
+                # Corrigido para split na string "Fitness:"
+                fitness = float(line.split("Fitness:")[1].strip())
+                current_population.append({'fitness': fitness})
+            elif "Weights:" in line and "Individual" in line:
+                weights_str = line.split("Weights:")[1].strip()
+                weights = [float(p) for p in weights_str.strip('[]').split(',')]
+                current_population[-1]['weights'] = np.array(weights)
+            elif line.strip() == "":
+                if current_population:
+                    population = current_population.copy()
+                    best_fitness = max(ind['fitness'] for ind in population)
+                    fitness_history.append(best_fitness)
+        if not population:
+            population = inicialize_population_ann()
     else:
         population = inicialize_population_ann()
 
-    fitness_history = []
-
+    controller = Evolution()
     with open("melhores_individuos.txt", "a") as f:
-        for generation in range(GENERATIONS):
+        for generation in range(generations_done, GENERATIONS):
             print(f"\nGeneration {generation+1}")
 
             for individual in population:
                 fitness1 = controller.runRobot(individual['weights'])
-                fitness2 = controller.runRobot(individual['weights'])
-                individual['fitness'] = (fitness1 + fitness2) / 2
+                individual['fitness'] = fitness1
+                print(f"Individual fitness: {individual['fitness']}")
 
-                print(f"Fitness(mean of 2 runs): {individual['fitness']}")
+            f.write(f"Generation: {generation+1}\n")
+            for idx, individual in enumerate(population):
+                f.write(f"Individual {idx+1} Fitness: {individual['fitness']}\n")
+                f.write(f"Individual {idx+1} Weights: {individual['weights'].tolist()}\n")
+            f.write("\n")
+            f.flush()
 
             population_sorted = sorted_parents(population)
             best_individual = population_sorted[0]
@@ -336,12 +397,7 @@ def main():
 
             fitness_history.append(best_individual['fitness'])
 
-            f.write(f"Fitness: {best_individual['fitness']}\n")
-            f.write(f"Weights: {best_individual['weights'].tolist()}\n\n")
-            f.flush()
-
-            # Salvar gráfico a cada 50 gerações
-            if (generation + 1) % 50 == 0:
+            if (generation + 1) % 30 == 0:
                 plt.figure(figsize=(10, 5))
                 plt.plot(range(1, len(fitness_history) + 1), fitness_history, marker='o', linestyle='-', color='blue')
                 plt.title("Evolução do Fitness do Melhor Indivíduo")
@@ -353,11 +409,10 @@ def main():
                 plt.close()
                 print(f"Gráfico salvo: fitness_evolution_gen_{generation+1}.png")
 
-            # Gerar a próxima geração
-            population = crossover_ann(population)
+            population = new_pop(population)
 
 
 if __name__ == "__main__":
-    main()
-    #plot_graph()
-    #main2()
+    #main()
+    #plot_bestGen()
+    main2()
