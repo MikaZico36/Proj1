@@ -312,7 +312,7 @@ class OpenAIGymEnvironment(Supervisor, gym.Env):
         vel_linear = (vel_left + vel_right) / 2.0
 
         if vel_linear > 0:
-            reward += .6 * vel_linear  # avançar vale mais
+            reward += .6 * vel_linear
         else:
             reward += 0.2 * abs(vel_linear)
 
@@ -486,7 +486,7 @@ def train_recurrent_ppo():
     print("Starting Recurrent PPO training...")
     model.learn(
         total_timesteps=100000,
-        callback=[checkpoint_callback],
+        callback=[checkpoint_callback, eval_callback],
         tb_log_name="run"
     )
     print("Recurrent PPO training finished.")
@@ -1012,9 +1012,9 @@ def main():
     #train_recurrent_ppo_tahn_relu()
 
 
-    train_ppo()
+    #train_ppo()
     #test_ppo_model()
-    #train_recurrent_ppo()
+    train_recurrent_ppo()
     #train_recurrent_ppo_continued("recurrent_ppo_def_thymio_final.zip",5e-5 , 1000000 )
     #test_recurrent_ppo_model()
 
