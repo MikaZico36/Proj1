@@ -3,6 +3,8 @@ from controller import Supervisor
 import random
 import math
 import numpy as np
+import os
+import matplotlib.pyplot as plt
 
 # Simulation parameters
 TIME_STEP = 5
@@ -15,7 +17,7 @@ GENOME_SIZE = (1+INPUT)*HIDDEN  + (HIDDEN+1)*OUTPUT
 GENERATIONS = 1000
 MUTATION_RATE = 0.2
 MUTATION_SIZE = 0.05
-EVALUATION_TIME = 300 # Simulated seconds per individual
+EVALUATION_TIME = 150 # Simulated seconds per individual
 RANGE = 5
 WEIGHTS = 6
 ANN_PARAMS = 22
@@ -84,7 +86,8 @@ class Evolution:
         random_rotation = random_orientation() 
         self.supervisor.getFromDef('ROBOT').getField('rotation').setSFRotation(random_rotation)
 
-        random_pos = random_position(0.2, 0.5, 0)  
+        random_pos = random_position(0.8, 0.8, 0)
+        center = [0, 0, 0] 
         self.supervisor.getFromDef('ROBOT').getField('translation').setSFVec3f(random_pos)
 
         self.left_motor.setVelocity(0)
@@ -103,17 +106,25 @@ class Evolution:
         self.reset()
         self.evaluation_start_time = self.supervisor.getTime()
         self.time_on_line = 0  # Resetar contador no início da execução
-        self.visited_areas.clear()  # Limpar áreas visitadas
-        self.last_time_update = self.evaluation_start_time  # Resetar tempo de atualização
+        self.visited_areas.clear()
+        self.last_time_update = self.evaluation_start_time
+        times_all_visited = 0
+
+        x, y, _ = self.supervisor.getSelf().getPosition()
+        last_position = (x, y)
 
         while self.supervisor.getTime() - self.evaluation_start_time < EVALUATION_TIME and not self.collision:
             ground_sensor_left = (self.ground_sensors[0].getValue() / 1023 - .6) / .2
             ground_sensor_right = (self.ground_sensors[1].getValue() / 1023 - .6) / .2
 
             outputs = ann_forward(weights, [ground_sensor_left, ground_sensor_right])
-            fitness, self.last_time_update = calculate_fitness(
-                ground_sensor_left, ground_sensor_right, fitness, self.supervisor, self.visited_areas, self.last_time_update
+            fitness, self.last_time_update, last_position, times_all_visited, stop = calculate_fitness(
+                ground_sensor_left, ground_sensor_right, fitness,
+                self.supervisor, self.visited_areas, self.last_time_update, last_position, times_all_visited
             )
+
+            if stop:
+                break
 
             left_speed = outputs[0] * 9
             right_speed = outputs[1] * 9
@@ -122,7 +133,6 @@ class Evolution:
             self.right_motor.setVelocity(max(min(right_speed, 9), -9))
 
             self.supervisor.step(self.timestep)
-
         return fitness
 
 def inicialize_population_ann():
@@ -143,7 +153,9 @@ def sorted_parents(population):
 
 def crossover_ann(population):
     new_population = []
-    for _ in range(POPULATION_SIZE//2):
+    best_fitness = sorted(population, key=lambda x: x['fitness'], reverse=True)[:PARENTS_KEEP]
+    new_population.extend(best_fitness)
+    while len(new_population) < POPULATION_SIZE:
         p1, p2 = random.sample(population, 2)
         point = random.randint(1, ANN_PARAMS - 1)
         c1_weights = np.concatenate((p1['weights'][:point], p2['weights'][point:]))
@@ -151,7 +163,8 @@ def crossover_ann(population):
         c1 = mutate_ann({'weights': c1_weights, 'fitness': 0})
         c2 = mutate_ann({'weights': c2_weights, 'fitness': 0})
         new_population.extend([c1, c2])
-    return new_population
+
+    return new_population[:POPULATION_SIZE]
 
 def mutate_ann(individual):
     for i in range(ANN_PARAMS):
@@ -159,17 +172,28 @@ def mutate_ann(individual):
             individual['weights'][i] += np.random.normal(0, MUTATION_SIZE)
     return individual  
        
-def calculate_fitness(left_sensor, right_sensor, fitness, supervisor, visited_areas, last_time_update):
+def calculate_fitness(left_sensor, right_sensor, fitness, supervisor, visited_areas, last_time_update, last_position, times_all_visited=0):
     current_time = supervisor.getTime()
 
+    # Recompensa proporcional com base nos sensores de chão
     if left_sensor < 0 and right_sensor < 0:
-        if current_time - last_time_update >= 1:  
-            fitness += 5
+        if current_time - last_time_update >= 1:
+            fitness += 4
+            last_time_update = current_time
+    elif left_sensor < 0 or right_sensor < 0:
+        if current_time - last_time_update >= 1:
+            fitness += 1
             last_time_update = current_time
 
+    # Posição do robô (apenas x e y)
     robot_position = supervisor.getSelf().getPosition()
-    x, y, _ = robot_position
+    x2, y2, _ = robot_position
+    x1, y1 = last_position
 
+    displacement = math.dist((x1, y1), (x2, y2))
+    fitness += displacement * 2  # recompensa por se mover
+
+    # Áreas pretas a serem exploradas
     black_areas = {
         "BlackArea": (1.0, 1.0, 0.25, 0.25),
         "BlackArea(1)": (0.99, 0.03, 0.1, 1.8),
@@ -182,71 +206,158 @@ def calculate_fitness(left_sensor, right_sensor, fitness, supervisor, visited_ar
     }
 
     for area_name, (ax, ay, w, h) in black_areas.items():
-        if (ax - w/2 <= x <= ax + w/2) and (ay - h/2 <= y <= ay + h/2):
+        if (ax - w/2 <= x2 <= ax + w/2) and (ay - h/2 <= y2 <= ay + h/2):
             if area_name not in visited_areas:
                 visited_areas.add(area_name)
                 fitness += 200
-                break  
+                break
 
-    if len(visited_areas) == 8:
+    # Novo bloco para contar quantas vezes todas as áreas foram visitadas
+    if len(visited_areas) == len(black_areas):
+        times_all_visited += 1
         visited_areas.clear()
 
-    return fitness, last_time_update
+    # Se passou 2 vezes por todas as áreas, retorna fitness 10000 e sinaliza para parar
+    if times_all_visited >= 2:
+        return 10000, last_time_update, (x2, y2), times_all_visited, True
+
+    return fitness, last_time_update, (x2, y2), times_all_visited, False
+
 
 def get_weights():
     best_fitness = float('-inf')
     best_wights = []
-    best_generation = 1
+    best_generation = None
+    generation = 0
     with open("melhores_individuos.txt", 'r') as f:
         linhas = f.readlines()
 
     for i in range(len(linhas)):
-        if linhas[i].startswith('--- Melhor Indivíduo da Geração'):
-            partes = linhas[i].split()
-            generation = int(partes[-2])
-
+        
         if linhas[i].startswith("Fitness:"):
-            fitness = int(linhas[i].split(":")[1].strip())
+            fitness = float(linhas[i].split(":")[1].strip())
 
             if fitness > best_fitness:
                 best_fitness = fitness
                 best_generation = generation
-
                 if i + 1 < len(linhas) and "Weights:" in linhas[i + 1]:
                     pesos_str = linhas[i + 1].split(":", 1)[1].strip()
                     best_wights = [float(p) for p in pesos_str.strip('[]').split(",")]
-    
-    print(best_generation)
+            generation += 1  
+    print("Melhor fitness encontrado:", best_fitness)
+    print("Melhor geração:", best_generation)
     return best_wights
+
+def have_20_individuals():
+    with open("melhores_individuos.txt", 'r') as f:
+        lines = f.readlines()
+        fitness_count = 0
+        for line in lines:
+            if line.startswith("Fitness:"):
+                fitness_count += 1
+                if fitness_count >= 20:
+                    return True
+    return False
+
+def get_weights_to_pop():
+    with open("melhores_individuos.txt", 'r') as f:
+        linhas = f.readlines()
+        individuos = []
+        for i in range(len(linhas)):
+            if linhas[i].startswith("Fitness:"):
+                fitness = float(linhas[i].split(":")[1].strip())
+
+            if linhas[i].startswith("Weights:"):
+                weights_str = linhas[i].split(":")[1].strip()
+                weights = [float(p) for p in weights_str.strip('[]').split(',')]
+                individuos.append((fitness, weights))  # Adiciona na ordem em que aparece
+
+        ultimos_individuos = individuos[-POPULATION_SIZE:]
+
+        return [ind[1] for ind in ultimos_individuos]
+    
+def plot_graph():
+    generations = []
+    generation = 0
+    fitness = []
+
+    with open("melhores_individuos.txt", 'r') as f:
+        lines = f.readlines()
+        for line in lines:
+            if line.startswith("Fitness:"):
+                try:
+                    fitness_value = float(line.split(":")[1].strip())
+                    generations.append(generation)
+                    generation += 1
+                    fitness.append(fitness_value)
+                except ValueError:
+                    continue
+  
+    if generations and fitness:
+        plt.figure(figsize=(10, 5))
+        plt.plot(generations, fitness, marker='o', linestyle='-', color='blue')
+        plt.title("Fitness do Melhor Indivíduo por Geração")
+        plt.xlabel("Geração")
+        plt.ylabel("Fitness")
+        plt.grid(True)
+        plt.tight_layout()
+        plt.show()
+    else:
+        print("Nenhum dado válido encontrado no ficheiro.")
 
 def main2():
     controller = Evolution()
     controller.run()
 
-
 def main():
     controller = Evolution()
-    population = inicialize_population_ann()
+    if os.path.exists("melhores_individuos.txt") and have_20_individuals():
+        population = get_weights_to_pop()
+        population = [{'weights': np.array(ind), 'fitness': 0} for ind in population]
+    else:
+        population = inicialize_population_ann()
+
+    fitness_history = []
 
     with open("melhores_individuos.txt", "a") as f:
         for generation in range(GENERATIONS):
             print(f"\nGeneration {generation+1}")
 
             for individual in population:
-                individual['fitness'] = controller.runRobot(individual['weights'])
-                print(f"Fitness: {individual['fitness']}")
+                fitness1 = controller.runRobot(individual['weights'])
+                fitness2 = controller.runRobot(individual['weights'])
+                individual['fitness'] = (fitness1 + fitness2) / 2
+
+                print(f"Fitness(mean of 2 runs): {individual['fitness']}")
 
             population_sorted = sorted_parents(population)
             best_individual = population_sorted[0]
             print(f"Best fitness: {best_individual['fitness']}")
 
-            f.write(f"--- Melhor Indivíduo da Geração {generation+1} ---\n")
+            fitness_history.append(best_individual['fitness'])
+
             f.write(f"Fitness: {best_individual['fitness']}\n")
             f.write(f"Weights: {best_individual['weights'].tolist()}\n\n")
+            f.flush()
+
+            # Salvar gráfico a cada 50 gerações
+            if (generation + 1) % 50 == 0:
+                plt.figure(figsize=(10, 5))
+                plt.plot(range(1, len(fitness_history) + 1), fitness_history, marker='o', linestyle='-', color='blue')
+                plt.title("Evolução do Fitness do Melhor Indivíduo")
+                plt.xlabel("Geração")
+                plt.ylabel("Fitness")
+                plt.grid(True)
+                plt.tight_layout()
+                plt.savefig(f"fitness_evolution_gen_{generation+1}.png")
+                plt.close()
+                print(f"Gráfico salvo: fitness_evolution_gen_{generation+1}.png")
 
             # Gerar a próxima geração
             population = crossover_ann(population)
 
 
 if __name__ == "__main__":
-    main2()
+    main()
+    #plot_graph()
+    #main2()
