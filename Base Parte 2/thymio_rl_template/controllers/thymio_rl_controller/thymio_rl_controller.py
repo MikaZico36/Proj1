@@ -262,7 +262,7 @@ class OpenAIGymEnvironment(Supervisor, gym.Env):
         return np.array(init_state).astype(np.float32), {}
 
 
-            #Calcula a reward
+        #Calcula a reward
     def reward(self, action):
         reward = 0
         terminated = False
@@ -282,7 +282,7 @@ class OpenAIGymEnvironment(Supervisor, gym.Env):
         # Recompensa negativa por colisões
         if self.collision_detected():
             if self.enable_collision_reward:
-                reward -= 5
+                reward -= 10
                 terminated = True
                 return reward, terminated,truncated
 
@@ -321,6 +321,7 @@ class OpenAIGymEnvironment(Supervisor, gym.Env):
             reward += .6 * vel_linear  # avançar vale mais
         else:
             reward += 0.2 * abs(vel_linear)
+
 
         # Termina o episódio
         if self.steps_since_reset >= self.max_episode_steps:
@@ -384,7 +385,7 @@ def train_ppo():
     )
 
     print("Starting PPO training...")
-    model.learn(total_timesteps=310000, callback=[checkpoint_callback, eval_callback], tb_log_name="ppo")
+    model.learn(total_timesteps=400000, callback=[checkpoint_callback, eval_callback], tb_log_name="ppo")
     print("PPO training finished.")
 
     model.save("ppo_thymio_final")
@@ -983,10 +984,10 @@ def main():
     #train_recurrent_ppo_tahn_relu()
 
 
-    #train_ppo()
+    train_ppo()
     #test_ppo_model()
-    train_recurrent_ppo()
-    #train_recurrent_ppo_continued("recurrent_ppo_def_thymio_final.zip",5e-5 , 500000 )
+    #train_recurrent_ppo()
+    #train_recurrent_ppo_continued("recurrent_ppo_def_thymio_final.zip",5e-5 , 1000000 )
     #test_recurrent_ppo_model()
 
 
