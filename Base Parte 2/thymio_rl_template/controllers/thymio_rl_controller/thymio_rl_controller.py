@@ -20,7 +20,7 @@ except ImportError:
 
 # Structure of a class to create an OpenAI Gym in Webots.
 class OpenAIGymEnvironment(Supervisor, gym.Env):
-    def __init__(self, max_episode_steps=1000, enable_ground_reward=True, enable_collision_reward=True, enable_movement_reward=True, enable_linear_vel_reward=True, randomize_on_reset=True): # Set a concrete value for max_episode_steps
+    def __init__(self, max_episode_steps=1000, enable_ground_reward=True, enable_collision_reward=True, enable_movement_reward=True, enable_linear_vel_reward=True, randomize_on_reset=True):
         super().__init__()
         self.spec = gym.envs.registration.EnvSpec(id='WebotsEnv-v0', entry_point='openai_gym:OpenAIGymEnvironment', max_episode_steps=max_episode_steps)
         self.__timestep = int(self.getBasicTimeStep())
@@ -35,7 +35,7 @@ class OpenAIGymEnvironment(Supervisor, gym.Env):
 
         # Fill in according to Thymio's sensors
         # See: https://www.gymlibrary.dev/api/spaces/
-        # 5 proximity sensors + 2 ground sensors = 7 observations
+        # 7 sensores = 5 sensores de proximidade e 2 sensores de chão
         self.observation_space = gym.spaces.Box(
             low=np.array([0,0,0,0,0,0,0],dtype=np.float32),
             high=np.array([1,1,1,1,1,1,1], dtype=np.float32))
@@ -163,10 +163,10 @@ class OpenAIGymEnvironment(Supervisor, gym.Env):
                 size_field.setSFVec3f(new_size)
 
 
-
+    #Verifica se o robô está a visitar uma nova plataforma
     def check_box_visits(self):
         current_pos = self.get_robot_position()
-        visit_radius = 0.3  # raio para considerar visita (ajuste conforme necessário)
+        visit_radius = 0.3
 
         rewards = 0
         for i, box in enumerate(self.boxes, start=1):
@@ -222,14 +222,6 @@ class OpenAIGymEnvironment(Supervisor, gym.Env):
         self.right_motor.setVelocity(right_speed)
 
 
-
-    #Retorna a posição do Thymio
-    def get_robot_position(self):
-        trans_field = self.thymio_node.getField("translation")
-        pos = trans_field.getSFVec3f()
-        return np.array(pos[:2])
-
-
     # Recria o cenário de treino do Thymio
     def reset(self, seed=None, options=None):
         super().reset(seed=seed)
@@ -277,25 +269,17 @@ class OpenAIGymEnvironment(Supervisor, gym.Env):
         if self.enable_ground_reward:
             # Evitar quedas do cenário
             if min(ground_sensors) < 0.68:
-
                 reward -=5
                 terminated = True
                 return reward, terminated,truncated
-            elif min(ground_sensors) > 0.71:
-                reward += 0.02
 
         # Recompensa negativa por colisões
         if max(sensor.getValue() for sensor in self.proximity_sensors) > 0.92:
             if self.enable_collision_reward:
                 reward -= 5
                 terminated = True
-                return reward, terminated,
+                return reward, terminated,truncated
 
-        elif max(sensor.getValue() for sensor in self.proximity_sensors) < 0.1:
-            reward += 0.05
-
-        else:
-            reward += 0.2
         # Explorar o espaço
         if self.enable_movement_reward:
             if self.prev_pos is None:
@@ -351,7 +335,7 @@ class OpenAIGymEnvironment(Supervisor, gym.Env):
         self.state = self.read_sensors()
         reward, terminated, truncated = self.reward(action)
         self.steps_since_reset += 1
-        print(f"Reward: {reward:.2f}, Terminated: {terminated}, Truncated: {truncated}, Steps: {self.steps_since_reset}/{self.max_episode_steps}")
+        #print(f"Reward: {reward:.2f}, Terminated: {terminated}, Truncated: {truncated}, Steps: {self.steps_since_reset}/{self.max_episode_steps}")
 
         return self.state.astype(np.float32), reward, terminated, truncated, {}
 
@@ -359,12 +343,20 @@ class OpenAIGymEnvironment(Supervisor, gym.Env):
 #PPO treino
 def train_ppo():
     env = OpenAIGymEnvironment()
-
     env = Monitor(env)
 
-    if not os.path.exists('./ppo_checkpoints'):
-        os.makedirs('./ppo_checkpoints')
+    base_dir = "./thymio_models/ppo_def/"
+    checkpoints_dir = os.path.join(base_dir, "checkpoints")
+    tensorboard_dir = os.path.join(base_dir, "tensorboard")
+    best_model_dir = os.path.join(base_dir, "best_model")
+    eval_logs_dir = os.path.join(base_dir, "eval_logs")
 
+    os.makedirs(checkpoints_dir, exist_ok=True)
+    os.makedirs(tensorboard_dir, exist_ok=True)
+    os.makedirs(best_model_dir, exist_ok=True)
+    os.makedirs(eval_logs_dir, exist_ok=True)
+
+    # Inicializa o modelo
     model = PPO(
         "MlpPolicy",
         env,
@@ -378,34 +370,38 @@ def train_ppo():
         gae_lambda=0.95,
         vf_coef=0.5,
         max_grad_norm=0.5,
-        tensorboard_log="./ppo_tensorboard/"
+        tensorboard_log=tensorboard_dir
     )
 
     checkpoint_callback = CheckpointCallback(
         save_freq=10000,
-        save_path='./ppo_checkpoints/',
+        save_path=checkpoints_dir,
         name_prefix='ppo_thymio'
     )
 
     eval_callback = EvalCallback(
         env,
-        best_model_save_path='./ppo_best_model/',
-        log_path='./ppo_eval_logs/',
+        best_model_save_path=best_model_dir,
+        log_path=eval_logs_dir,
         eval_freq=10000,
         deterministic=True,
         render=False
     )
 
     print("Starting PPO training...")
-    model.learn(total_timesteps=400000, callback=[checkpoint_callback, eval_callback], tb_log_name="ppo")
+    model.learn(
+        total_timesteps=100000,
+        callback=[checkpoint_callback, eval_callback],
+        tb_log_name="run"
+    )
     print("PPO training finished.")
 
-    model.save("ppo_thymio_final")
+    model.save(os.path.join(base_dir, "ppo_thymio_final"))
+
+    with open(os.path.join(base_dir, "ppo_config.txt"), "w") as f:
+        f.write(str(model.get_parameters()))
 
     env.close()
-
-
-
 
 
 
@@ -440,13 +436,18 @@ def test_ppo_model():
     print(f"Test episode finished. Total Reward: {episode_reward:.2f}, Total Steps: {steps}")
     print("PPO model test concluded.")
 
-#Treino do Recurrent PPO
+# Treino do Recurrent PPO
 def train_recurrent_ppo():
     env = OpenAIGymEnvironment()
-
     env = Monitor(env)
-    if not os.path.exists('./recurrent_ppo_def_checkpoints'):
-        os.makedirs('./recurrent_ppo_def_checkpoints')
+
+    base_dir = "./thymio_models/recurrent_ppo_def/"
+    checkpoints_dir = os.path.join(base_dir, "checkpoints")
+    tensorboard_dir = os.path.join(base_dir, "tensorboard")
+    best_model_dir = os.path.join(base_dir, "best_model")
+    eval_logs_dir = os.path.join(base_dir, "eval_logs")
+    os.makedirs(checkpoints_dir, exist_ok=True)
+    os.makedirs(tensorboard_dir, exist_ok=True)
 
     model = RecurrentPPO(
         "MlpLstmPolicy",
@@ -461,25 +462,36 @@ def train_recurrent_ppo():
         gae_lambda=0.95,
         vf_coef=0.5,
         max_grad_norm=0.5,
-        tensorboard_log="./recurrent_ppo_def_tensorboard/"
+        tensorboard_log=tensorboard_dir
     )
 
     checkpoint_callback = CheckpointCallback(
         save_freq=10000,
-        save_path='./recurrent_ppo_def_checkpoints/',
+        save_path=checkpoints_dir,
         name_prefix='recurrent_ppo_def_thymio'
     )
 
-    with open("recurrent_ppo_def_config.txt", "w") as f:
+    eval_callback = EvalCallback(
+        env,
+        best_model_save_path=best_model_dir,
+        log_path=eval_logs_dir,
+        eval_freq=10000,
+        deterministic=True,
+        render=False
+    )
+
+    with open(os.path.join(base_dir, "recurrent_ppo_def_config.txt"), "w") as f:
         f.write(str(model.get_parameters()))
 
     print("Starting Recurrent PPO training...")
-    model.learn(total_timesteps=1500000, callback=[checkpoint_callback],tb_log_name="recurrent_ppo_def")
+    model.learn(
+        total_timesteps=100000,
+        callback=[checkpoint_callback],
+        tb_log_name="run"
+    )
     print("Recurrent PPO training finished.")
 
-    model.save("recurrent_ppo_def_thymio_final")
-
-
+    model.save(os.path.join(base_dir, "recurrent_ppo_def_thymio_final"))
 
     env.close()
 
@@ -859,7 +871,7 @@ def _train_ppo_rewards(
     )
 
     try:
-        model.learn(total_timesteps=50000, callback=[checkpoint_callback, eval_callback], tb_log_name=scenario_name)
+        model.learn(total_timesteps=100000, callback=[checkpoint_callback, eval_callback], tb_log_name=scenario_name)
     except Exception as e:
         print(f"Error during {scenario_name} training: {e}")
     finally:
@@ -882,6 +894,8 @@ def train_ppo_no_movement_reward():
 
 def train_ppo_no_linear_vel_reward():
     _train_ppo_rewards("No Linear Velocity Reward", enable_linear_vel_reward=False)
+def train_ppo_reward():
+    _train_ppo_rewards("All rewards")
 
 
 #Treino com diferentes reward retirados
@@ -985,6 +999,8 @@ def main():
     #train_recurrent_ppo_no_movement_reward()
     #train_recurrent_ppo_no_linear_vel_reward()
 
+
+    #train_ppo_reward()
     #train_ppo_no_randomize()
     #train_ppo_no_ground_penalty()
     #train_ppo_no_collision_penalty()
